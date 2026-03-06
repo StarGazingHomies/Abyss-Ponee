@@ -1,6 +1,5 @@
 import cairo
 import math
-import numpy as np
 from PIL import Image, ImageFilter
 
 # ── Colour palette (r, g, b) normalised 0‑1 ──────────────────────────────
@@ -30,8 +29,10 @@ ROW_H           = 40   * SCALE
 HEADER_H        = 140  * SCALE
 HEADER_BODY_PAD = 30   * SCALE           # gap between header and first round row
 CENTRE_X        = WIDTH // 2
-FONT_FACE       = "HUN-din 1451"
-FONT_FACE_BOLD  = "HUN-din 1451"
+# FONT_FACE       = "HUN-din 1451"
+# FONT_FACE_BOLD  = "HUN-din 1451"
+FONT_FACE       = "HUN"
+FONT_FACE_BOLD  = "HUN"
 ROW_PAD         = 12   * SCALE
 LINE_W          = 1.5  * SCALE           # accent line thickness
 BORDER_RADIUS   = 2    * SCALE

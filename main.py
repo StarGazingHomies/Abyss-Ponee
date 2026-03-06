@@ -75,7 +75,11 @@ async def on_message(message):
 
             # await message.channel.send(f'Fetching data for {username}...')
 
-            result: ClientResponse = await tetrioClient.leaderboard(username, "league", "recent")
+            result: dict = await tetrioClient.leaderboard(username, "league", "recent")
+
+            if not result['success']:
+                await message.reply(f"{result['error']['msg']}")
+                return
 
             # print(result["data"]["entries"][0].keys())
             # print(result["data"]["entries"][0]['results'])
@@ -88,7 +92,7 @@ async def on_message(message):
             player1_data = leaderboard[1]
 
             def parse_stats(stats):
-                return (stats["apm"], stats["pps"], stats["vsscore"])
+                return stats["apm"], stats["pps"], stats["vsscore"]
 
             rounds = []
             for rnd in entry["results"]["rounds"]:
@@ -108,10 +112,10 @@ async def on_message(message):
 
             render.render(render_data, "output.png")
 
-            await message.channel.send(file=discord.File("output.png"))
+            await message.reply(file=discord.File("output.png"))
 
         except Exception as e:
-            await message.channel.send(f'Error: {str(e)}')
+            await message.reply(f'Error {e.with_traceback(None)}')
 
 client.run(token)
 
