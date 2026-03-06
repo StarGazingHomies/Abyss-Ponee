@@ -25,10 +25,10 @@ TIMER_WHITE  = (1.0, 1.0, 1.0)          # timer text colour
 # ── Layout constants ──────────────────────────────────────────────────────
 SCALE           = 2                      # increase to scale the whole image up (e.g. 2 = 2×)
 
-WIDTH           = 1100 * SCALE
+WIDTH           = 1000 * SCALE
 ROW_H           = 40   * SCALE
 HEADER_H        = 140  * SCALE
-HEADER_BODY_PAD = 16   * SCALE           # gap between header and first round row
+HEADER_BODY_PAD = 30   * SCALE           # gap between header and first round row
 CENTRE_X        = WIDTH // 2
 FONT_FACE       = "HUN-din 1451"
 FONT_FACE_BOLD  = "HUN-din 1451"
@@ -36,6 +36,11 @@ ROW_PAD         = 12   * SCALE
 LINE_W          = 1.5  * SCALE           # accent line thickness
 BORDER_RADIUS   = 2    * SCALE
 TITLE_BORDER_WIDTH = 3 * SCALE
+
+options = cairo.FontOptions()
+# cairo.ANTIALIAS_GRAY, cairo.ANTIALIAS_SUBPIXEL
+options.set_antialias(cairo.ANTIALIAS_GRAY)
+
 
 
 def _set_rgb(ctx, col, alpha=1.0):
@@ -251,10 +256,11 @@ def render(data, output_path="output.png"):
 
     num_rounds = len(rounds)
     body_h = num_rounds * (ROW_H + ROW_PAD)  # total height of all round rows (no pad after last row)
-    HEIGHT = HEADER_H + body_h + 20  # 20 for footer / padding
+    HEIGHT = HEADER_H + HEADER_BODY_PAD + body_h  # 20 for footer / padding
 
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, WIDTH, HEIGHT)
     ctx = cairo.Context(surface)
+    ctx.set_font_options(options)
 
     # ── Background ────────────────────────────────────────────────────
     _set_rgb(ctx, BG)
@@ -265,7 +271,7 @@ def render(data, output_path="output.png"):
     VS_GAP = 110 * SCALE      # total gap around "VS" in the header
     panel_h = HEADER_H - 10*SCALE
     # Panels start off-screen (-20) and meet at the centre ± VS_GAP/2
-    lx = -20 * SCALE
+    lx = -50 * SCALE
     ly = 10  * SCALE
     panel_w = CENTRE_X - VS_GAP // 2 - lx   # extends from off-screen to centre gap
 
@@ -286,7 +292,7 @@ def render(data, output_path="output.png"):
     # Right panel (red) — solid at inner (left) edge, fades to black off-screen right
     rx = CENTRE_X + VS_GAP // 2
     ry = ly
-    rpanel_w = WIDTH + 20 - rx
+    rpanel_w = WIDTH - lx - rx
     _rounded_rect(ctx, rx, ry, rpanel_w, panel_h, r=BORDER_RADIUS)
     pat = cairo.LinearGradient(rx, 0, rx + rpanel_w, 0)
     pat.add_color_stop_rgba(0.0, *RED_MID, 1.0)
@@ -300,8 +306,8 @@ def render(data, output_path="output.png"):
     ctx.set_line_width(TITLE_BORDER_WIDTH)
     ctx.stroke()
 
-    inner_left  = lx + panel_w - 20   # right inner edge of left panel
-    inner_right = rx + 20              # left inner edge of right panel
+    inner_left  = lx + panel_w - 10 * SCALE   # right inner edge of left panel
+    inner_right = rx + 10 * SCALE              # left inner edge of right panel
 
     # Player names
     _draw_text(ctx, player0.upper(), inner_left, ly + 30*SCALE, size=22*SCALE, bold=True, colour=WHITE, align="right")
@@ -309,10 +315,10 @@ def render(data, output_path="output.png"):
 
     # Large win counts
     _draw_text_shadow(ctx, str(wins0), inner_left, ly + 90*SCALE, size=64*SCALE, bold=True, colour=WHITE, align="right",
-                      shadow_col=GREY, shadow_offset=(0, 3), shadow_alpha=1.0,
-                      glow_col=WHITE, glow_radius=4*SCALE, glow_alpha=0.5)
+                      shadow_col=GREY, shadow_offset=(0, 1.5*SCALE), shadow_alpha=1.0,
+                      glow_col=WHITE, glow_radius=4 * SCALE, glow_alpha=0.5)
     _draw_text_shadow(ctx, str(wins1), inner_right, ry + 90*SCALE, size=64*SCALE, bold=True, colour=WHITE, align="left",
-                      shadow_col=GREY, shadow_offset=(0, 3), shadow_alpha=1.0,
+                      shadow_col=GREY, shadow_offset=(0, 1.5*SCALE), shadow_alpha=1.0,
                       glow_col=WHITE, glow_radius=4 * SCALE, glow_alpha=0.5)
 
     # Overall stat lines
@@ -321,9 +327,9 @@ def render(data, output_path="output.png"):
 
     # "VS" in centre
     # _draw_text(ctx, "VS", CENTRE_X, ly + 72*SCALE, size=36*SCALE, bold=False, colour=YELLOW, align="center")
-    _draw_text_shadow(ctx, "VS", CENTRE_X, ly + 72*SCALE, size=36*SCALE, bold=False, colour=YELLOW, align="center",
-                      shadow_col=GOLD, shadow_offset=(0, 3), shadow_alpha=1.0,
-                      glow_col=GOLD, glow_radius=3*SCALE, glow_alpha=0.4)
+    _draw_text_shadow(ctx, "VS", CENTRE_X, ly + 85*SCALE, size=50*SCALE, bold=False, colour=YELLOW, align="center",
+                      shadow_col=GOLD, shadow_offset=(0, 1.5*SCALE), shadow_alpha=1.0,
+                      glow_col=GOLD, glow_radius=4*SCALE, glow_alpha=0.5)
 
     # ── Round rows ────────────────────────────────────────────────────
     row_top  = HEADER_H + HEADER_BODY_PAD
@@ -331,8 +337,8 @@ def render(data, output_path="output.png"):
     left_x2  = CENTRE_X - 30*SCALE
     right_x1 = CENTRE_X + 30*SCALE
     # Outer edges bleed off-screen so there's no visible empty gradient tail
-    left_x1  = 150*SCALE
-    right_x2 = WIDTH - 150*SCALE
+    left_x1  = 100*SCALE
+    right_x2 = WIDTH - 100*SCALE
     left_row_w  = left_x2 - left_x1
     right_row_w = right_x2 - right_x1
 
@@ -353,7 +359,7 @@ def render(data, output_path="output.png"):
         _rounded_rect(ctx, left_x1, y, left_row_w, ROW_H, r=4)
         pat = cairo.LinearGradient(left_x1, 0, left_x2, 0)
         pat.add_color_stop_rgba(0.0, *BLACK, 1.0)
-        pat.add_color_stop_rgba(0.6, *left_bg, 1.0)
+        pat.add_color_stop_rgba(0.99, *left_bg, 1.0)
         pat.add_color_stop_rgba(1.0, *left_bg, 1.0)
         ctx.set_source(pat)
         ctx.fill()
@@ -362,7 +368,7 @@ def render(data, output_path="output.png"):
         _rounded_rect(ctx, right_x1, y, right_row_w, ROW_H, r=4)
         pat = cairo.LinearGradient(right_x1, 0, right_x2, 0)
         pat.add_color_stop_rgba(0.0, *right_bg, 1.0)
-        pat.add_color_stop_rgba(0.4, *right_bg, 1.0)
+        pat.add_color_stop_rgba(0.01, *right_bg, 1.0)
         pat.add_color_stop_rgba(1.0, *BLACK, 1.0)
         ctx.set_source(pat)
         ctx.fill()
@@ -422,27 +428,27 @@ if __name__ == '__main__':
         ]
     }, "output.png")
 
-    # ── Character advance diagnostic ──────────────────────────────────
-    _surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
-    _ctx  = cairo.Context(_surf)
-
-    print("\nCharacter advances per font/size combination:")
-    for _font, _weight, _label in [
-        (FONT_FACE,      cairo.FONT_WEIGHT_NORMAL, "normal"),
-        (FONT_FACE_BOLD, cairo.FONT_WEIGHT_BOLD,   "bold"),
-    ]:
-        for _size in [13 * SCALE, 15 * SCALE, 16 * SCALE, 22 * SCALE, 36 * SCALE, 64 * SCALE]:
-            _ctx.select_font_face(_font, cairo.FONT_SLANT_NORMAL, _weight)
-            _ctx.set_font_size(_size)
-            print(f"\n  {_font!r} {_label} @ {_size}px:")
-            print(f"  {'char':<6}  {'glyph_idx':>10}  {'x_advance':>10}  {'ink_width':>10}")
-            for _ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 :.":
-                _glyphs = _ctx.get_scaled_font().text_to_glyphs(0, 0, _ch, False)
-                if not _glyphs:
-                    continue
-                _g   = _glyphs[0]
-                _ext = _ctx.get_scaled_font().glyph_extents([_g])
-                _te  = _ctx.text_extents(_ch)
-                print(f"  {_ch!r:<6}  {_g.index:>10}  {_ext.x_advance:>10.3f}  {_te.width:>10.3f}")
-
+    # # ── Character advance diagnostic ──────────────────────────────────
+    # _surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+    # _ctx  = cairo.Context(_surf)
+    #
+    # print("\nCharacter advances per font/size combination:")
+    # for _font, _weight, _label in [
+    #     (FONT_FACE,      cairo.FONT_WEIGHT_NORMAL, "normal"),
+    #     (FONT_FACE_BOLD, cairo.FONT_WEIGHT_BOLD,   "bold"),
+    # ]:
+    #     for _size in [13 * SCALE, 15 * SCALE, 16 * SCALE, 22 * SCALE, 36 * SCALE, 64 * SCALE]:
+    #         _ctx.select_font_face(_font, cairo.FONT_SLANT_NORMAL, _weight)
+    #         _ctx.set_font_size(_size)
+    #         print(f"\n  {_font!r} {_label} @ {_size}px:")
+    #         print(f"  {'char':<6}  {'glyph_idx':>10}  {'x_advance':>10}  {'ink_width':>10}")
+    #         for _ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 :.":
+    #             _glyphs = _ctx.get_scaled_font().text_to_glyphs(0, 0, _ch, False)
+    #             if not _glyphs:
+    #                 continue
+    #             _g   = _glyphs[0]
+    #             _ext = _ctx.get_scaled_font().glyph_extents([_g])
+    #             _te  = _ctx.text_extents(_ch)
+    #             print(f"  {_ch!r:<6}  {_g.index:>10}  {_ext.x_advance:>10.3f}  {_te.width:>10.3f}")
+    #
 
