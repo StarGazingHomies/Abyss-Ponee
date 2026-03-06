@@ -1,0 +1,5 @@
+pycairo
+Pillow
+numpy
+discord.py
+aiohttp
