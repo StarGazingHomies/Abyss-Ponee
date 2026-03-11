@@ -2,7 +2,7 @@ import cairo
 import math
 from PIL import Image, ImageFilter
 
-# ── Colour palette (r, g, b) normalised 0‑1 ──────────────────────────────
+# Colours, sampled from reference image (hopefully ok)
 BG           = (0.0, 0.0, 0.0)          # pure black background
 BLUE_DARK    = (0.05, 0.11, 0.20)       # blue panel dark end
 BLUE_MID     = (0.08, 0.18, 0.32)       # blue row normal
@@ -13,7 +13,7 @@ RED_DARK     = (0.20, 0.05, 0.05)       # red panel dark end
 RED_MID      = (0.32, 0.08, 0.08)       # red row normal
 RED_BRIGHT   = (0.73, 0.14, 0.14)       # red row winner highlight
 LABEL_RED_W  = (0.96, 0.43, 0.43)       # label colour for the red (right) side during a win
-LABEL_RED_L  = (0.80, 0.15, 0.15)              # label colour for the red (right) side during a loss
+LABEL_RED_L  = (0.80, 0.15, 0.15)       # label colour for the red (right) side during a loss
 BLACK        = (0.0, 0.0, 0.0)
 WHITE        = (1.0, 1.0, 1.0)
 YELLOW       = (1.0, 0.80, 0.0)
@@ -21,9 +21,8 @@ GOLD         = (1.0, 0.53, 0.0)
 GREY         = (0.55, 0.55, 0.60)
 TIMER_WHITE  = (1.0, 1.0, 1.0)          # timer text colour
 
-# ── Layout constants ──────────────────────────────────────────────────────
+# Layout constants
 SCALE           = 2                      # increase to scale the whole image up (e.g. 2 = 2×)
-
 WIDTH           = 1000 * SCALE
 ROW_H           = 40   * SCALE
 HEADER_H        = 140  * SCALE
@@ -39,9 +38,9 @@ BORDER_RADIUS   = 2    * SCALE
 TITLE_BORDER_WIDTH = 3 * SCALE
 
 options = cairo.FontOptions()
-# cairo.ANTIALIAS_GRAY, cairo.ANTIALIAS_SUBPIXEL
+# cairo.ANTIALIAS_GRAY, cairo.ANTIALIAS_SUBPIXEL, not going to use none
+# APPARENTLY TETRIO DOES NOT SUBPIXEL ANTIALIAS LOL
 options.set_antialias(cairo.ANTIALIAS_GRAY)
-
 
 
 def _set_rgb(ctx, col, alpha=1.0):
@@ -162,7 +161,7 @@ def _draw_text_shadow(ctx, text, x, y, size=16, bold=False, colour=WHITE, align=
 
 
 def _draw_stat_labels(ctx, apm, pps, vs, x, y, size=15, align="right", bold=True, label_col=None):
-    """Draw  '100.47 APM · 2.07 PPS · 219.51 VS'  with coloured labels."""
+    """Draw stats for the BANNER with coloured labels."""
     lc_apm = label_col
     lc_pps = label_col
     lc_vs  = label_col
@@ -213,8 +212,7 @@ def _draw_stat_labels(ctx, apm, pps, vs, x, y, size=15, align="right", bold=True
 
 
 def _draw_row_stats(ctx, apm, pps, vs, x, y, size=15, align="right", label_col=None):
-    """Draw row‑level stats: '103.46 APM - 2.10 PPS - 182.42 VS'.
-    *label_col* overrides all three label colours with a single colour."""
+    """Draw stats per game instead of for the banner."""
     lc_apm = label_col
     lc_pps = label_col
     lc_vs  = label_col
@@ -322,7 +320,7 @@ def render(data, output_path="output.png"):
                       shadow_col=GREY, shadow_offset=(0, 1.5*SCALE), shadow_alpha=1.0,
                       glow_col=WHITE, glow_radius=4 * SCALE, glow_alpha=0.5)
 
-    # Overall stat lines
+    # Stats
     _draw_stat_labels(ctx, *stats0, inner_left, ly + panel_h - 12*SCALE, size=13*SCALE, align="right", label_col=BLUE_BRIGHT)
     _draw_stat_labels(ctx, *stats1, inner_right, ry + panel_h - 12*SCALE, size=13*SCALE, align="left", label_col=RED_BRIGHT)
 
@@ -332,9 +330,9 @@ def render(data, output_path="output.png"):
                       shadow_col=GOLD, shadow_offset=(0, 1.5*SCALE), shadow_alpha=1.0,
                       glow_col=GOLD, glow_radius=4*SCALE, glow_alpha=0.5)
 
-    # ── Round rows ────────────────────────────────────────────────────
+    # -------------------- Rounds --------------------
     row_top  = HEADER_H + HEADER_BODY_PAD
-    # Inner edges (where text sits, adjacent to the centre timer)
+    # Inner edge
     left_x2  = CENTRE_X - 30*SCALE
     right_x1 = CENTRE_X + 30*SCALE
     # Outer edges bleed off-screen so there's no visible empty gradient tail
@@ -355,8 +353,7 @@ def render(data, output_path="output.png"):
         left_text = LABEL_BLUE_W if winner == 0 else LABEL_BLUE_L
         right_text = LABEL_RED_W if winner == 1 else LABEL_RED_L
 
-        # Left row bar — solid colour on the right, fades to black off-screen left
-        # Gradient anchored so colour starts ~80px from inner edge → no dead space
+        # Left row: Black left off screen -> solid right
         _rounded_rect(ctx, left_x1, y, left_row_w, ROW_H, r=4)
         pat = cairo.LinearGradient(left_x1, 0, left_x2, 0)
         pat.add_color_stop_rgba(0.0, *BLACK, 1.0)
@@ -365,7 +362,7 @@ def render(data, output_path="output.png"):
         ctx.set_source(pat)
         ctx.fill()
 
-        # Right row bar — solid colour on the left, fades to black off-screen right
+        # Right row: Solid left -> Black right off screen
         _rounded_rect(ctx, right_x1, y, right_row_w, ROW_H, r=4)
         pat = cairo.LinearGradient(right_x1, 0, right_x2, 0)
         pat.add_color_stop_rgba(0.0, *right_bg, 1.0)
@@ -390,46 +387,45 @@ def render(data, output_path="output.png"):
         _draw_row_stats(ctx, *s0, left_x2 - 12*SCALE, text_y, size=15*SCALE, align="right", label_col=left_text)
         _draw_row_stats(ctx, *s1, right_x1 + 12*SCALE, text_y, size=15*SCALE, align="left",  label_col=right_text)
 
-        # Centre time placeholder (use round duration if available, else index)
+        # Center time
         duration = rnd[3] if len(rnd) > 3 else None
-        if duration is not None:
-            mins = int(duration) // 60
-            secs = int(duration) % 60
-            time_str = f"{mins}:{secs:02d}"
-        else:
-            time_str = f"0:{(i + 1) * 10:02d}"  # placeholder
+        mins = int(duration) // 60
+        secs = int(duration) % 60
+        time_str = f"{mins}:{secs:02d}"
         _draw_text(ctx, time_str, CENTRE_X, text_y, size=16*SCALE, bold=True, colour=TIMER_WHITE, align="center")
 
-    # # ── Save ──────────────────────────────────────────────────────────
-    surface.write_to_png(output_path := "output.png")
+    # Save
+    # Note that because of async not being real multithreading
+    # there's no race condition / this will be ok
+    surface.write_to_png(output_path)
     print(f"Saved output_path  ({WIDTH}×{HEIGHT})")
     return surface
 
 
 if __name__ == '__main__':
     pass
-    render({
-        "player0": "pony",
-        "player1": "artificial5467",
-        "stats": [(100.47, 2.07, 219.51), (99.63, 2.27, 220.28)],
-        "rounds": [
-            (1, (103.46, 2.10, 182.42), (89.66, 2.33, 233.01), 40),
-            (1, (96.50, 2.08, 241.26), (124.79, 2.38, 279.30), 51),
-            (1, (79.81, 1.97, 178.85), (92.99, 2.23, 202.73), 111),
-            (0, (110.62, 1.95, 238.60), (88.28, 2.15, 207.44), 83),
-            (0, (93.20, 1.97, 229.05), (83.83, 2.16, 176.63), 38),
-            (0, (140.38, 2.17, 293.30), (120.37, 2.38, 263.53), 59),
-            (0, (98.50, 2.24, 205.20), (91.08, 2.09, 172.31), 49),
-            (0, (79.31, 2.17, 187.27), (75.23, 2.54, 143.82), 27),
-            (0, (100.34, 2.23, 197.64), (54.64, 2.02, 121.42), 20),
-            (1, (80.22, 1.94, 173.82), (124.14, 2.17, 278.12), 30),
-            (1, (75.40, 2.23, 186.71), (130.99, 2.33, 254.70), 27),
-            (1, (98.07, 2.17, 219.46), (112.52, 2.42, 244.80), 45),
-            (0, (93.81, 2.14, 201.33), (108.67, 2.36, 251.22), 38),
-        ]
-    }, "output.png")
+    # render({
+    #     "player0": "pony",
+    #     "player1": "artificial5467",
+    #     "stats": [(100.47, 2.07, 219.51), (99.63, 2.27, 220.28)],
+    #     "rounds": [
+    #         (1, (103.46, 2.10, 182.42), (89.66, 2.33, 233.01), 40),
+    #         (1, (96.50, 2.08, 241.26), (124.79, 2.38, 279.30), 51),
+    #         (1, (79.81, 1.97, 178.85), (92.99, 2.23, 202.73), 111),
+    #         (0, (110.62, 1.95, 238.60), (88.28, 2.15, 207.44), 83),
+    #         (0, (93.20, 1.97, 229.05), (83.83, 2.16, 176.63), 38),
+    #         (0, (140.38, 2.17, 293.30), (120.37, 2.38, 263.53), 59),
+    #         (0, (98.50, 2.24, 205.20), (91.08, 2.09, 172.31), 49),
+    #         (0, (79.31, 2.17, 187.27), (75.23, 2.54, 143.82), 27),
+    #         (0, (100.34, 2.23, 197.64), (54.64, 2.02, 121.42), 20),
+    #         (1, (80.22, 1.94, 173.82), (124.14, 2.17, 278.12), 30),
+    #         (1, (75.40, 2.23, 186.71), (130.99, 2.33, 254.70), 27),
+    #         (1, (98.07, 2.17, 219.46), (112.52, 2.42, 244.80), 45),
+    #         (0, (93.81, 2.14, 201.33), (108.67, 2.36, 251.22), 38),
+    #     ]
+    # }, "output.png")
 
-    # # ── Character advance diagnostic ──────────────────────────────────
+    # Stupid advance, had to yoink a different front compared to the one readily available on the internet
     # _surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
     # _ctx  = cairo.Context(_surf)
     #
@@ -451,5 +447,3 @@ if __name__ == '__main__':
     #             _ext = _ctx.get_scaled_font().glyph_extents([_g])
     #             _te  = _ctx.text_extents(_ch)
     #             print(f"  {_ch!r:<6}  {_g.index:>10}  {_ext.x_advance:>10.3f}  {_te.width:>10.3f}")
-    #
-

@@ -10,13 +10,16 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
-bot_owner = 523717630972919809
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
-with open('.config', 'r') as f:
-    token = f.read().strip()
-if not token:
+with open('config.json', 'r') as f:
+    import json
+    config = json.load(f)
+    token = config.get('token')
+    bot_owner = int(config.get('bot_owner'))
+    headers = config.get('headers', {})
+if not token or not bot_owner or not headers:
     print('Token not found in token.txt')
     exit(1)
 
@@ -94,7 +97,7 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
 @client.event
 async def on_ready():
     await tree.sync()
-    tetrioClient.init()
+    tetrioClient.init(headers)
     print(f'We have logged in as {client.user}')
 
 @client.event

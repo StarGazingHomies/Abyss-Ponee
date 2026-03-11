@@ -12,11 +12,9 @@ class TetraLeagueAPI:
         self.cache = None
         self.initialized = False
 
-    def init(self):
+    def init(self, headers):
         self.client = aiohttp.ClientSession(
-            headers={
-                'User-Agent': 'curl/8.4.0',
-            }
+            headers=headers
         )
         self.load_cache('cache.json')
         self.initialized = True
@@ -29,6 +27,8 @@ class TetraLeagueAPI:
         self.initialized = False
 
     def save_cache(self, filename: str):
+        # TODO: This is stupid. Don't do this.
+        # Like, seriously, this is speedran not actual prod code.
         self.prune_cache()
         sanitized_cache = {"/".join(key): value for key, value in self.cache.items()}
         with open(filename, 'w') as f:
