@@ -263,20 +263,20 @@ def render(data, output_path="output.png"):
     ctx = cairo.Context(surface)
     ctx.set_font_options(options)
 
-    # ── Background ────────────────────────────────────────────────────
+    # Background
     _set_rgb(ctx, BG)
     ctx.rectangle(0, 0, WIDTH, HEIGHT)
     ctx.fill()
 
-    # ── Header panels ─────────────────────────────────────────────────
-    VS_GAP = 110 * SCALE      # total gap around "VS" in the header
+    # Header
+    VS_GAP = 110 * SCALE
     panel_h = HEADER_H - 10*SCALE
-    # Panels start off-screen (-20) and meet at the centre ± VS_GAP/2
+    # Off screen -> Center
     lx = -50 * SCALE
     ly = 10  * SCALE
-    panel_w = CENTRE_X - VS_GAP // 2 - lx   # extends from off-screen to centre gap
+    panel_w = CENTRE_X - VS_GAP // 2 - lx
 
-    # Left panel (blue) — solid at inner (right) edge, fades to black off-screen left
+    # Left top
     _rounded_rect(ctx, lx, ly, panel_w, panel_h, r=BORDER_RADIUS)
     pat = cairo.LinearGradient(lx, 0, lx + panel_w, 0)
     pat.add_color_stop_rgba(0.0, *BLACK,    1.0)
@@ -290,7 +290,7 @@ def render(data, output_path="output.png"):
     ctx.set_line_width(TITLE_BORDER_WIDTH)
     ctx.stroke()
 
-    # Right panel (red) — solid at inner (left) edge, fades to black off-screen right
+    # Right top
     rx = CENTRE_X + VS_GAP // 2
     ry = ly
     rpanel_w = WIDTH - lx - rx
