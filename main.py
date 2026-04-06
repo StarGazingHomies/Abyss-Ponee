@@ -38,6 +38,8 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
             await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username.')
             return
 
+    username = username.lower()
+
     result: dict = await tetrioClient.leaderboard(username, "league", "recent")
 
     if not result['success']:
@@ -84,7 +86,7 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
     await interaction.response.defer()
     try:
         await handle_tetra(
-            send_reply=lambda **kwargs: interaction.followup.send(**kwargs),
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
             send_message=lambda msg: interaction.followup.send(msg),
             author_id=interaction.user.id,
             username=username,
@@ -137,7 +139,7 @@ async def on_message(message):
                     round_num = int(parts[2])
 
             await handle_tetra(
-                send_reply=lambda **kwargs: message.reply(**kwargs),
+                send_reply=lambda *args, **kwargs: message.reply(*args, **kwargs),
                 send_message=lambda msg: message.channel.send(msg),
                 author_id=message.author.id,
                 username=username,
