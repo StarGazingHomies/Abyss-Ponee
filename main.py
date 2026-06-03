@@ -51,8 +51,9 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
 )
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
+    render_arguments="Additional arguments for rendering: --no-points, --no-shading, --no-graph",
 )
-async def leagueflow_command(interaction: discord.Interaction, username: Optional[str] = None):
+async def leagueflow_command(interaction: discord.Interaction, username: Optional[str] = None, render_arguments: Optional[str] = None):
     await interaction.response.defer()
     try:
         await handle_leagueflow(
@@ -60,6 +61,7 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
             send_message=lambda msg: interaction.followup.send(msg),
             author_id=interaction.user.id,
             username=username,
+            render_arguments=render_arguments,
         )
     except Exception as e:
         await interaction.followup.send(f'Error: {e.with_traceback(None)}')

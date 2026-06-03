@@ -4,6 +4,7 @@ import discord
 
 import tetrio
 from render import tetra as tetra_render
+from render import leagueflow as leagueflow_render
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
@@ -104,7 +105,7 @@ async def handle_tetra_message(message: discord.Message):
     )
 
 
-async def handle_leagueflow(send_reply, send_message, author_id: int, username: Optional[str] = None):
+async def handle_leagueflow(send_reply, send_message, author_id: int, username: Optional[str] = None, render_arguments: Optional[str] = None):
     """Core logic for the leagueflow command. send_reply and send_message are callables."""
 
     if not username:
@@ -121,6 +122,25 @@ async def handle_leagueflow(send_reply, send_message, author_id: int, username: 
         await send_reply(f"{result['error']['msg']}")
         return
 
-    with open("leagueflow.json", "w") as f:
-        import json
-        json.dump(result, f, indent=4)
+    # print(f"Fetched leagueflow data for {username}: {result['data']}")
+    render_data = result['data']
+
+    if not render_data['points']:
+        await send_message('No tetra league history data available for this user.')
+        return
+
+    no_points = False
+    no_shading = False
+    no_graph = False
+    if render_arguments:
+        args = render_arguments.split()
+        for arg in args:
+            if arg == "--no-points":
+                no_points = True
+            elif arg == "--no-shading":
+                no_shading = True
+            elif arg == "--no-graph":
+                no_graph = True
+
+    leagueflow_render.render_leagueflow(render_data, "leagueflow.png", no_points=no_points, no_shading=no_shading, no_graph=no_graph)
+    await send_reply(file=discord.File("leagueflow.png"))
