@@ -96,6 +96,10 @@ class TetraLeagueAPI:
         path = ('users', user, 'records', gamemode, leaderboard)
         return await self.request(path, {"limit": "100"}, cache_time=60 * 10)
 
+    async def leagueflow(self, user):
+        path = ('labs', 'leagueflow', user)
+        return await self.request(path, cache_time=60 * 10)
+
     async def user_search(self, query):
         path = ('users', 'search', query)
         return await self.request(path, cache_time=60 * 5)

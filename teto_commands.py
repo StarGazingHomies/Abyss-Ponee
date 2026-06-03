@@ -8,18 +8,23 @@ from render import tetra as tetra_render
 tetrioClient = tetrio.TetraLeagueAPI()
 
 
+async def resolve_username(author_id: int) -> Optional[str]:
+    query_param = f"discord:id:{author_id}"
+    search_result = await tetrioClient.user_search(query_param)
+    if search_result["data"]["users"]:
+        username = search_result["data"]["users"][0]["username"]
+        print(f'Found TETR.IO username {username} for Discord ID {author_id}')
+        return username
+    else:
+        return None
 
 async def handle_tetra(send_reply, send_message, author_id: int, username: Optional[str] = None, round_num: int = 1):
     """Core logic for the tetra command. send_reply and send_message are callables."""
 
     if not username:
-        query_param = f"discord:id:{author_id}"
-        search_result = await tetrioClient.user_search(query_param)
-        if search_result["data"]["users"]:
-            username = search_result["data"]["users"][0]["username"]
-            print(f'Found TETR.IO username {username} for Discord ID {author_id}')
-        else:
-            await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username.')
+        username = await resolve_username(author_id)
+        if not username:
+            await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username. Usage: `>tetra <username> [round]`')
             return
 
     username = username.lower()
@@ -97,3 +102,25 @@ async def handle_tetra_message(message: discord.Message):
         username=username,
         round_num=round_num,
     )
+
+
+async def handle_leagueflow(send_reply, send_message, author_id: int, username: Optional[str] = None):
+    """Core logic for the leagueflow command. send_reply and send_message are callables."""
+
+    if not username:
+        username = await resolve_username(author_id)
+        if not username:
+            await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username. Usage: `>leagueflow <username>`')
+            return
+
+    username = username.lower()
+
+    result: dict = await tetrioClient.leagueflow(username)
+
+    if not result['success']:
+        await send_reply(f"{result['error']['msg']}")
+        return
+
+    with open("leagueflow.json", "w") as f:
+        import json
+        json.dump(result, f, indent=4)

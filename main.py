@@ -4,6 +4,7 @@ from typing import Optional
 
 from teto_commands import tetrioClient
 from teto_commands import handle_tetra, handle_tetra_message
+from teto_commands import handle_leagueflow
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -43,6 +44,25 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
     except Exception as e:
         await interaction.followup.send(f'Error: {e.with_traceback(None)}')
 
+
+@tree.command(
+    name="leagueflow",
+    description="Visualize your Tetra League progression",
+)
+@app_commands.describe(
+    username="TETR.IO username (defaults to your linked account)",
+)
+async def leagueflow_command(interaction: discord.Interaction, username: Optional[str] = None):
+    await interaction.response.defer()
+    try:
+        await handle_leagueflow(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            author_id=interaction.user.id,
+            username=username,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Error: {e.with_traceback(None)}')
 
 @client.event
 async def on_ready():
