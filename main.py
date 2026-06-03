@@ -2,16 +2,14 @@ import discord
 from discord import app_commands
 from typing import Optional
 
-import tetrio
-from commands import *
+from teto_commands import tetrioClient
+from teto_commands import handle_tetra, handle_tetra_message
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
-
-tetrioClient = tetrio.TetraLeagueAPI()
 
 with open('config.json', 'r') as f:
     import json

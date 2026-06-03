@@ -51,7 +51,9 @@ class TetraLeagueAPI:
         for key in keys_to_delete:
             del self.cache[key]
 
-    async def request(self, path: tuple[str, ...], cache_time: int = 60 * 5) -> dict:
+    async def request(self, path: tuple[str, ...], params=None, cache_time: int = 60 * 5) -> dict:
+        if params is None:
+            params = {}
         if not self.initialized:
             raise Exception('TetraLeagueAPI not initialized. Call init() first.')
 
@@ -64,7 +66,7 @@ class TetraLeagueAPI:
                 print(f'Cache hit for {path}')
                 return self.cache[path]['data']
 
-        url = self.base_url + '/'.join(path)
+        url = self.base_url + '/'.join(path) + '?' + '&'.join(f'{k}={v}' for k, v in params.items())
         print(f'Fetching {url}')
         result = await self.client.get(url)
         result_json = await result.json()
@@ -92,7 +94,7 @@ class TetraLeagueAPI:
             raise ValueError('Invalid leaderboard')
 
         path = ('users', user, 'records', gamemode, leaderboard)
-        return await self.request(path, cache_time=60 * 10)
+        return await self.request(path, {"limit": "100"}, cache_time=60 * 10)
 
     async def user_search(self, query):
         path = ('users', 'search', query)

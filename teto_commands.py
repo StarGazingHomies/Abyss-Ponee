@@ -2,14 +2,15 @@ from typing import Optional
 
 import discord
 
-from main import tetrioClient
+import tetrio
 from render import tetra as tetra_render
+
+tetrioClient = tetrio.TetraLeagueAPI()
+
 
 
 async def handle_tetra(send_reply, send_message, author_id: int, username: Optional[str] = None, round_num: int = 1):
     """Core logic for the tetra command. send_reply and send_message are callables."""
-    if round_num < 1 or round_num > 10:
-        round_num = 1
 
     if not username:
         query_param = f"discord:id:{author_id}"
@@ -27,6 +28,10 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
 
     if not result['success']:
         await send_reply(f"{result['error']['msg']}")
+        return
+
+    if round_num < 1 or round_num > len(result["data"]["entries"]):
+        await send_reply(f"Invalid round number. Please choose a number between 1 and {len(result['data']['entries'])}.")
         return
 
     entry = result["data"]["entries"][round_num - 1]
