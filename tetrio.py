@@ -19,9 +19,9 @@ class TetraLeagueAPI:
         self.load_cache('cache.json')
         self.initialized = True
 
-    def shutdown(self, save_cache: bool = True):
+    async def shutdown(self, save_cache: bool = True):
         if self.client:
-            self.client.close()
+            await self.client.close()
         if save_cache:
             self.save_cache('cache.json')
         self.initialized = False
