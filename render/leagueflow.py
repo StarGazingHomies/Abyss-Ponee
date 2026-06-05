@@ -106,19 +106,6 @@ def render_leagueflow(
     if not times:
         raise ValueError("No leagueflow points provided")
 
-    min_time = min(times)
-    max_time = max(times)
-    min_tr = min(min(tr_values), min(opponent_trs))
-    max_tr = max(max(tr_values), max(opponent_trs))
-
-    if min_time == max_time:
-        max_time += 1.0
-    if min_tr == max_tr:
-        max_tr += 1
-
-    scaled_width = max(1, int(round(width * scale)))
-    scaled_height = max(1, int(round(height * scale)))
-
     padding_left = PADDING_LEFT * scale
     padding_right = PADDING_RIGHT * scale
     padding_top = PADDING_TOP * scale
@@ -129,12 +116,32 @@ def render_leagueflow(
     time_label_y_offset = TIME_LABEL_Y_OFFSET * scale
     base_font_size = 14 * scale
 
+    min_time = min(times)
+    max_time = max(times)
+    min_tr = min(min(tr_values), min(opponent_trs))
+    max_tr = max(max(tr_values), max(opponent_trs))
+
+    # Test: Scale them to account for size of the marker radius
+    # min_tr -= (max_tr - min_tr) * (marker_radius / (height * scale - padding_top - padding_bottom))
+    # max_tr += (max_tr - min_tr) * (marker_radius / (height * scale - padding_top - padding_bottom))
+    # min_time -= (max_time - min_time) * (marker_radius / (width * scale - padding_left - padding_right))
+    # max_time += (max_time - min_time) * (marker_radius / (width * scale - padding_left - padding_right))
+
+    if min_time == max_time:
+        max_time += 1.0
+    if min_tr == max_tr:
+        max_tr += 1
+
+    scaled_width = max(1, int(round(width * scale)))
+    scaled_height = max(1, int(round(height * scale)))
+
+
     plot_w = scaled_width - padding_left - padding_right
     plot_h = scaled_height - padding_top - padding_bottom
-    inner_left = padding_left + marker_radius
-    inner_right = padding_left + plot_w - marker_radius
-    inner_top = padding_top + marker_radius
-    inner_bottom = padding_top + plot_h - marker_radius
+    inner_left = padding_left # + marker_radius
+    inner_right = padding_left + plot_w # - marker_radius
+    inner_top = padding_top # + marker_radius
+    inner_bottom = padding_top + plot_h # - marker_radius
     inner_w = max(1.0, inner_right - inner_left)
     inner_h = max(1.0, inner_bottom - inner_top)
 
@@ -196,7 +203,7 @@ def render_leagueflow(
     ctx.stroke()
 
     ctx.save()
-    ctx.rectangle(padding_left, padding_top, plot_w, plot_h)
+    ctx.rectangle(padding_left + scale, padding_top - scale, plot_w, plot_h)
     ctx.clip()
 
     # Shade area under TR line

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+import dateparser
 from typing import Optional
 
 import discord
@@ -105,7 +107,7 @@ async def handle_tetra_message(message: discord.Message):
     )
 
 
-async def handle_leagueflow(send_reply, send_message, author_id: int, username: Optional[str] = None, render_arguments: Optional[str] = None):
+async def handle_leagueflow(send_reply, send_message, author_id: int, username: Optional[str] = None, render_arguments: Optional[str] = None, after: Optional[str] = None, before: Optional[str] = None):
     """Core logic for the leagueflow command. send_reply and send_message are callables."""
 
     if not username:
@@ -128,6 +130,31 @@ async def handle_leagueflow(send_reply, send_message, author_id: int, username: 
     if not render_data['points']:
         await send_message('No tetra league history data available for this user.')
         return
+
+    after_ms = None
+    before_ms = None
+    if after:
+        try:
+            after_ms = dateparser.parse(after, settings={'TIMEZONE': 'UTC', 'RETURN_AS_TIMEZONE_AWARE': True}).timestamp() * 1000
+        except AttributeError:
+            await send_message(f'Invalid `after` date: {after}')
+            return
+    if before:
+        try:
+            before_ms = dateparser.parse(before, settings={'TIMEZONE': 'UTC', 'RETURN_AS_TIMEZONE_AWARE': True}).timestamp() * 1000
+        except AttributeError:
+            await send_message(f'Invalid `before` date: {before}')
+            return
+
+    if after_ms is not None or before_ms is not None:
+        start_time = render_data['startTime']
+        filtered = [p for p in render_data['points']
+                    if (after_ms is None or start_time + p[0] >= after_ms)
+                    and (before_ms is None or start_time + p[0] < before_ms)]
+        if not filtered:
+            await send_message('No data found in the specified date range.')
+            return
+        render_data = {**render_data, 'points': filtered}
 
     no_points = False
     no_shading = False

@@ -52,8 +52,10 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
     render_arguments="Additional arguments for rendering: --no-points, --no-shading, --no-graph",
+    after="Show games on or after this date (YYYY-MM-DD, UTC)",
+    before="Show games before this date (YYYY-MM-DD, UTC)",
 )
-async def leagueflow_command(interaction: discord.Interaction, username: Optional[str] = None, render_arguments: Optional[str] = None):
+async def leagueflow_command(interaction: discord.Interaction, username: Optional[str] = None, render_arguments: Optional[str] = None, after: Optional[str] = None, before: Optional[str] = None):
     await interaction.response.defer()
     try:
         await handle_leagueflow(
@@ -62,6 +64,8 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
             author_id=interaction.user.id,
             username=username,
             render_arguments=render_arguments,
+            after=after,
+            before=before,
         )
     except Exception as e:
         await interaction.followup.send(f'Error: {e.with_traceback(None)}')
