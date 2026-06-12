@@ -75,7 +75,7 @@ def _draw_text(ctx, text, x, y, size, bold=False, colour=WHITE, align="left", fo
     return ext.x_advance
 
 
-def resize_for_cairo(img: Image.Image, size: tuple, resample=Image.LANCZOS) -> cairo.ImageSurface:
+def resize_for_cairo(img: Image.Image, size: tuple[int, int], resample=Image.LANCZOS) -> cairo.ImageSurface:
     """Resize an RGBA image and return a Cairo surface with premultiplied alpha (FORMAT_ARGB32)."""
     img = img.convert("RGBA")
     arr = np.array(img, dtype=np.float32) / 255.0
@@ -86,18 +86,24 @@ def resize_for_cairo(img: Image.Image, size: tuple, resample=Image.LANCZOS) -> c
     premul = Image.fromarray((arr * 255).clip(0, 255).astype(np.uint8), "RGBA")
     resized = premul.resize(size, resample)
 
-    w, h = resized.size
-    return cairo.ImageSurface.create_for_data(bytearray(resized.tobytes("raw", "BGRA")), cairo.FORMAT_ARGB32, w, h)
+    # LANCZOS ringing can produce pixels where RGB > A (invalid premultiplied).
+    # Cairo assumes RGB <= A, so clamp to enforce that invariant.
+    out = np.array(resized, dtype=np.uint8)
+    out[:, :, :3] = np.minimum(out[:, :, :3], out[:, :, 3:4])
+    bgra = out[:, :, [2, 1, 0, 3]]
+
+    w, h = size
+    return cairo.ImageSurface.create_for_data(bytearray(bgra.tobytes()), cairo.FORMAT_ARGB32, w, h)
 
 
 def _load_mod_icon(mod_name, size_px):
     rev = False
     if "reverse" in mod_name:
-        mod_name = f"reverse_{mod_name.replace('_reversed', '')}"
-        size_px *= 2
+        # size_px *= 2
         rev = True
-    path = ASSETS_DIR / f"Mod_{mod_name}.png"
+    path = ASSETS_DIR / "mod_icons" / f"{mod_name}.png"
     img = Image.open(path).convert("RGBA")
+
     return resize_for_cairo(img, (size_px, size_px), resample=Image.BICUBIC), rev
 
     # """Return a cairo ImageSurface for the named mod, tinted to ICON_TINT."""
@@ -136,15 +142,8 @@ def _format_altitude(alt_m):
 
 def _draw_altitude_text(ctx, alt_m, cx, y):
     """Draw altitude split into integer, decimal (smaller), and unit suffix (amber)."""
-    if alt_m >= 10000:
-        val_str = f"{alt_m / 1000:.2f}"
-        suffix = " KM"
-    elif alt_m >= 1000:
-        val_str = f"{alt_m:.1f}"
-        suffix = " M"
-    else:
-        val_str = f"{alt_m:.2f}"
-        suffix = " M"
+    val_str = f"{alt_m:,.1f}"
+    suffix = " M"
 
     dot = val_str.find('.')
     int_part = val_str[:dot] if dot != -1 else val_str
@@ -172,7 +171,7 @@ def _draw_altitude_text(ctx, alt_m, cx, y):
                           shadow_offset=(sdx, sdy), shadow_col=shadow_col,
                           glow_col=shadow_col, glow_radius = 3 * SCALE, glow_alpha=0.7)
         x += dec_w
-    _draw_text_shadow(ctx, suffix, x, y, size=dec_size, colour=PB_ORANGE)
+    _draw_text_shadow(ctx, suffix, x, y, size=dec_size, colour=VALUE_COL)
 
 
 def _format_time(ms):
@@ -406,10 +405,10 @@ def render_quickplay(entry, output_path="output.png"):
         for mod in mods:
             try:
                 surf, rev = _load_mod_icon(mod, ICON_SIZE)
-                if rev:
-                    ctx.set_source_surface(surf, cx - total_w, icon_y - ICON_SIZE // 2)
-                else:
-                    ctx.set_source_surface(surf, ix, icon_y)
+                # if rev:
+                #     ctx.set_source_surface(surf, cx - total_w, icon_y - ICON_SIZE // 2)
+                # else:
+                ctx.set_source_surface(surf, ix, icon_y)
                 ctx.paint()
             except FileNotFoundError:
                 pass
@@ -454,7 +453,7 @@ if __name__ == "__main__":
     # render_quickplay(entries[8], args.output)
 
     # Make mods visible for testing
-    # entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile"]
-    entries[9]["extras"]["zenith"]["mods"] = ["expert_reversed"]
+    entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile", "doublehole"]
+    # entries[9]["extras"]["zenith"]["mods"] = ["expert_reversed"]
     entries[9]["personal_rank"] = 42
     render_quickplay(entries[9], args.output)
