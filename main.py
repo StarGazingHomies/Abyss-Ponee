@@ -1,10 +1,11 @@
 import discord
 from discord import app_commands
-from typing import Optional
+from typing import Optional, Literal
 
 from teto_commands import tetrioClient
 from teto_commands import handle_tetra, handle_tetra_message
 from teto_commands import handle_leagueflow
+from teto_commands import handle_quickplay
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,7 +30,7 @@ if not token or not bot_owner or not headers:
 )
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
-    game_number="Which recent game to display (1-10, default 1)",
+    game_number="Which recent game to display (1-100, default 1)",
 )
 async def tetra_command(interaction: discord.Interaction, username: Optional[str] = None, game_number: Optional[int] = None):
     await interaction.response.defer()
@@ -40,6 +41,33 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
             author_id=interaction.user.id,
             username=username,
             round_num=game_number or 1,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Error: {e.with_traceback(None)}')
+
+
+@tree.command(
+    name="qp",
+    description="View past Quick Play games",
+)
+@app_commands.describe(
+    username="TETR.IO username (defaults to your linked account)",
+    game_number="Which recent game to display (1-100, default 1)",
+    expert="Expert mode",
+    sort_by="Sort by recent games or highest altitude"
+)
+async def quickplay_command(interaction: discord.Interaction, username: Optional[str] = None, game_number: Optional[int] = None,
+                            expert: bool=None, sort_by: Literal['recent', 'altitude'] = 'recent'):
+    await interaction.response.defer()
+    try:
+        await handle_quickplay(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            author_id=interaction.user.id,
+            username=username,
+            round_num=game_number or 1,
+            expert=expert or False,
+            sort_by=sort_by,
         )
     except Exception as e:
         await interaction.followup.send(f'Error: {e.with_traceback(None)}')

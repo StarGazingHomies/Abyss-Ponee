@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 import dateparser
 from typing import Optional
@@ -7,6 +8,7 @@ import discord
 import tetrio
 from render import tetra as tetra_render
 from render import leagueflow as leagueflow_render
+from render import quickplay as quickplay_render
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
@@ -171,3 +173,52 @@ async def handle_leagueflow(send_reply, send_message, author_id: int, username: 
 
     leagueflow_render.render_leagueflow(render_data, "leagueflow.png", no_points=no_points, no_shading=no_shading, no_graph=no_graph)
     await send_reply(file=discord.File("leagueflow.png"))
+
+
+async def handle_quickplay(send_reply, send_message, author_id: int, username: Optional[str] = None, round_num: int = 1, expert: bool = False, sort_by: str = 'recent'):
+    if not username:
+        username = await resolve_username(author_id)
+        if not username:
+            await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username. Usage: `>leagueflow <username>`')
+            return
+
+    username = username.lower()
+
+    gamemode = "zenithex" if expert else "zenith"
+
+    best_scores_result: dict = await tetrioClient.leaderboard(username, gamemode, "top")
+    if not best_scores_result['success']:
+        await send_reply(f"{best_scores_result['error']['msg']}")
+        return
+
+    if sort_by == 'recent':
+        result: dict = await tetrioClient.leaderboard(username, gamemode, "recent")
+
+        if not result['success']:
+            await send_reply(f"{result['error']['msg']}")
+            return
+    else:
+        result = best_scores_result
+
+    # print(f"Fetched qp data for {username}: {result['data']}")
+    # with open("quickplay_output.json", "w", encoding='utf-8') as f:
+    #     json.dump(result, f)
+
+    entries = result["data"]["entries"]
+    if round_num < 1 or round_num > len(entries):
+        await send_reply(f"Invalid game number. Please choose between 1 and {len(entries)}.")
+        return
+
+    entry = entries[round_num - 1]
+
+    # Find the true rank of the entry
+    entry_id = entry["_id"]
+    for i, e in enumerate(best_scores_result["data"]["entries"]):
+        if e["_id"] == entry_id:
+            entry["personal_rank"] = i + 1
+            break
+    else:
+        entry["personal_rank"] = None
+
+    quickplay_render.render_quickplay(entry, "qp_output.png")
+    await send_reply(file=discord.File("qp_output.png"))

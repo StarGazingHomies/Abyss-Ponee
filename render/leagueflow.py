@@ -3,6 +3,11 @@ import math
 from datetime import datetime
 from typing import Dict, Iterable, List, Tuple
 
+try:
+    from tetra import _draw_text_shadow
+except ImportError:
+    from render.tetra import _draw_text_shadow
+
 import cairo
 
 # Styling (kept close to tetra.py conventions)
