@@ -203,10 +203,6 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
     else:
         result = best_scores_result
 
-    # print(f"Fetched qp data for {username}: {result['data']}")
-    # with open("quickplay_output.json", "w", encoding='utf-8') as f:
-    #     json.dump(result, f)
-
     entries = result["data"]["entries"]
     if round_num < 1 or round_num > len(entries):
         await send_reply(f"Invalid game number. Please choose between 1 and {len(entries)}.")

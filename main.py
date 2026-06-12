@@ -63,7 +63,8 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
             round_num=game_number or 1,
         )
     except Exception as e:
-        await interaction.followup.send(f'Error: {e.with_traceback(None)}')
+        await interaction.followup.send(f'Internal Error (details omitted).')
+        logger.error(f'Error in /tetra command: {e}', exc_info=True)
 
 
 @tree.command(
@@ -91,7 +92,8 @@ async def quickplay_command(interaction: discord.Interaction, username: Optional
             sort_by=sort_by,
         )
     except Exception as e:
-        await interaction.followup.send(f'Error: {e.with_traceback(None)}')
+        await interaction.followup.send(f'Internal Error (details omitted).')
+        logger.error(f'Error in /qp command: {e}', exc_info=True)
 
 
 @tree.command(
@@ -118,7 +120,8 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
             before=before,
         )
     except Exception as e:
-        await interaction.followup.send(f'Error: {e.with_traceback(None)}')
+        await interaction.followup.send(f'Internal Error (details omitted).')
+        logger.error(f'Error in /leagueflow command: {e}', exc_info=True)
 
 @client.event
 async def on_ready():

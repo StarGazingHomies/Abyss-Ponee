@@ -11,8 +11,11 @@ except ImportError:
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 BG             = (0.32, 0.137, 0.078)
+REV_BG         = (0.164, 0.027, 0.055)
 BORDER_COL_TL  = (0.568, 0.188, 0.113)
+REV_BORDER_COL_TL = (0.360, 0.050, 0.050)
 BORDER_COL_BR  = (0.215, 0.080, 0.050)
+REV_BORDER_COL_BR = (0.125, 0.024, 0.024)
 TITLE_COL      = (0.700, 0.375, 0.250)
 SHADOW_COL     = (1.000, 0.823, 0.741)
 VALUE_COL      = (1.000, 0.600, 0.415)
@@ -20,6 +23,7 @@ PB_ORANGE      = (0.990, 0.439, 0.274)
 LABEL_COL      = TITLE_COL # (0.592, 0.513, 0.438)
 PERSONAL_RANK_COL = (0.64, 0.30, 0.157)
 ALT_BG         = (0.28, 0.117, 0.066)   # darker inset behind the altitude number
+REV_ALT_BG         = (0.141, 0.023, 0.047)
 ROW_DIV_COL    = (0.280, 0.170, 0.108)
 ICON_TINT      = (0.978, 0.748, 0.345)   # amber used to recolour all mod icons
 WHITE          = (1.000, 1.000, 1.000)
@@ -87,9 +91,14 @@ def resize_for_cairo(img: Image.Image, size: tuple, resample=Image.LANCZOS) -> c
 
 
 def _load_mod_icon(mod_name, size_px):
+    rev = False
+    if "reverse" in mod_name:
+        mod_name = f"reverse_{mod_name.replace('_reversed', '')}"
+        size_px *= 2
+        rev = True
     path = ASSETS_DIR / f"Mod_{mod_name}.png"
     img = Image.open(path).convert("RGBA")
-    return resize_for_cairo(img, (size_px, size_px), resample=Image.BICUBIC)
+    return resize_for_cairo(img, (size_px, size_px), resample=Image.BICUBIC), rev
 
     # """Return a cairo ImageSurface for the named mod, tinted to ICON_TINT."""
     # path = ASSETS_DIR / f"Mod_{mod_name}.png"
@@ -109,7 +118,12 @@ def _active_mods(entry):
     """Return the list of non-reverse mod names for this entry."""
     # print(entry["extras"]["zenith"]["mods"])
     # return ['expert', 'allspin', 'volatile']
-    return [m for m in entry["extras"]["zenith"]["mods"] if not m.startswith("reverse_")]
+    return [m for m in entry["extras"]["zenith"]["mods"]]
+
+
+def _has_reverse(entry):
+    """Return True if this entry has the reverse mod active."""
+    return any([(True if "reverse" in m else False) for m in entry["extras"]["zenith"]["mods"]])
 
 
 def _format_altitude(alt_m):
@@ -224,6 +238,7 @@ def render_quickplay(entry, output_path="output.png"):
     rank     = entry["personal_rank"]
     is_pb    = (rank == 1)
     mods     = _active_mods(entry)
+    reversed = _has_reverse(entry)
     rows     = _build_stat_rows(entry)
 
     # ── Pre-compute altitude rect (icons live inside it when present) ─────
@@ -272,7 +287,10 @@ def render_quickplay(entry, output_path="output.png"):
 
     # ── Background ───────────────────────────────────────────────────────
     border_pad = 6 * SCALE
-    _set_rgb(ctx, BG)
+    if reversed:
+        _set_rgb(ctx, REV_BG)
+    else:
+        _set_rgb(ctx, BG)
     ctx.rectangle(rect_left + border_pad, border_pad, RECT_WIDTH - 2 * border_pad, height - 2 * border_pad)
     ctx.fill()
 
@@ -290,7 +308,10 @@ def render_quickplay(entry, output_path="output.png"):
 
     # TL color: left + top sides. The outer→inner diagonal at TR and BL creates
     # a 45° triangular tip at each color-transition corner.
-    _set_rgb(ctx, BORDER_COL_TL)
+    if reversed:
+        _set_rgb(ctx, REV_BORDER_COL_TL)
+    else:
+        _set_rgb(ctx, BORDER_COL_TL)
     ctx.new_path()
     ctx.move_to(obx, oty)
     ctx.line_to(orx, oty)
@@ -302,7 +323,10 @@ def render_quickplay(entry, output_path="output.png"):
     ctx.fill()
 
     # BR color: right + bottom sides, sharing the same diagonal edges at TR and BL.
-    _set_rgb(ctx, BORDER_COL_BR)
+    if reversed:
+        _set_rgb(ctx, REV_BORDER_COL_BR)
+    else:
+        _set_rgb(ctx, BORDER_COL_BR)
     ctx.new_path()
     ctx.move_to(obx, oby)
     ctx.line_to(orx, oby)
@@ -320,24 +344,14 @@ def render_quickplay(entry, output_path="output.png"):
                size=TITLE_SIZE, colour=TITLE_COL)
 
     # ── Altitude rect ─────────────────────────────────────────────────────
-    _set_rgb(ctx, ALT_BG)
+    if reversed:
+        _set_rgb(ctx, REV_ALT_BG)
+    else:
+        _set_rgb(ctx, ALT_BG)
     ctx.rectangle(rect_left + PAD, alt_rect_top, RECT_WIDTH - 2 * PAD, alt_rect_h)
     ctx.fill()
 
     _draw_altitude_text(ctx, altitude, cx, alt_text_y)
-
-    # ── Mod icons (centered inside bottom of altitude rect) ───────────────
-    if mods:
-        total_w = len(mods) * ICON_SIZE + (len(mods) - 1) * ICON_GAP
-        ix = cx - total_w // 2
-        for mod in mods:
-            try:
-                surf = _load_mod_icon(mod, ICON_SIZE)
-                ctx.set_source_surface(surf, ix, icon_y)
-                ctx.paint()
-            except FileNotFoundError:
-                pass
-            ix += ICON_SIZE + ICON_GAP
 
     # ── PB Banner ─────────────────────────────────────────────────────────
     y = alt_rect_top + alt_rect_h
@@ -346,6 +360,8 @@ def render_quickplay(entry, output_path="output.png"):
     bw = RECT_WIDTH - 2 * PAD
     if is_pb:
         _set_rgb(ctx, PB_ORANGE)
+    elif reversed:
+        _set_rgb(ctx, REV_ALT_BG)
     else:
         _set_rgb(ctx, ALT_BG)
     ctx.rectangle(rect_left + bx, y, bw, BANNER_H)
@@ -382,6 +398,22 @@ def render_quickplay(entry, output_path="output.png"):
                               shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
                              glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.1)
         pass
+
+    # ── Mod icons (centered inside bottom of altitude rect) ───────────────
+    if mods:
+        total_w = len(mods) * ICON_SIZE + (len(mods) - 1) * ICON_GAP
+        ix = cx - total_w // 2
+        for mod in mods:
+            try:
+                surf, rev = _load_mod_icon(mod, ICON_SIZE)
+                if rev:
+                    ctx.set_source_surface(surf, cx - total_w, icon_y - ICON_SIZE // 2)
+                else:
+                    ctx.set_source_surface(surf, ix, icon_y)
+                ctx.paint()
+            except FileNotFoundError:
+                pass
+            ix += ICON_SIZE + ICON_GAP
 
     # ── Stat table ────────────────────────────────────────────────────────
     lx = rect_left + PAD + 4 * SCALE
@@ -422,6 +454,7 @@ if __name__ == "__main__":
     # render_quickplay(entries[8], args.output)
 
     # Make mods visible for testing
-    entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile"]
+    # entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile"]
+    entries[9]["extras"]["zenith"]["mods"] = ["expert_reversed"]
     entries[9]["personal_rank"] = 42
     render_quickplay(entries[9], args.output)
