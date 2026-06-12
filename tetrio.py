@@ -1,8 +1,11 @@
 import json
+import logging
 import time
 
 import aiohttp
 from aiohttp import ClientResponse
+
+logger = logging.getLogger(__name__)
 
 
 class TetraLeagueAPI:
@@ -41,7 +44,7 @@ class TetraLeagueAPI:
 
             self.cache = {tuple(key.split('/')): value for key, value in sanitized_cache.items()}
         except FileNotFoundError:
-            print(f'Cache file {filename} not found, starting with empty cache')
+            logger.warning(f'Cache file {filename} not found, starting with empty cache')
             self.cache = {}
 
     def prune_cache(self):
@@ -60,16 +63,16 @@ class TetraLeagueAPI:
         # Check cache
         if path in self.cache:
             if self.cache[path]['expires'] < time.time():
-                print(f'Cache expired for {path}, fetching new data')
+                logger.info(f'GET {"/".join(path)} EXPIRED')
                 del self.cache[path]
             else:
-                print(f'Cache hit for {path}')
+                logger.info(f'GET {"/".join(path)} CACHE HIT')
                 return self.cache[path]['data']
 
         url = self.base_url + '/'.join(path) + '?' + '&'.join(f'{k}={v}' for k, v in params.items())
-        print(f'Fetching {url}')
         result = await self.client.get(url)
         result_json = await result.json()
+        logger.info(f'GET {"/".join(path)} {result.status}')
         self.cache[path] = {
             'data': result_json,
             'expires': time.time() + cache_time

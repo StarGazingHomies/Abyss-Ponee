@@ -1,9 +1,12 @@
 import json
+import logging
 from datetime import datetime, timezone
 import dateparser
 from typing import Optional
 
 import discord
+
+logger = logging.getLogger(__name__)
 
 import tetrio
 from render import tetra as tetra_render
@@ -18,7 +21,7 @@ async def resolve_username(author_id: int) -> Optional[str]:
     search_result = await tetrioClient.user_search(query_param)
     if search_result["data"]["users"]:
         username = search_result["data"]["users"][0]["username"]
-        print(f'Found TETR.IO username {username} for Discord ID {author_id}')
+        logger.info(f'Resolved Discord ID {author_id} -> {username}')
         return username
     else:
         return None
@@ -83,7 +86,7 @@ async def handle_tetra_message(message: discord.Message):
         search_result = await tetrioClient.user_search(query_param)
         if search_result["data"]["users"]:
             username = search_result["data"]["users"][0]["username"]
-            print(f'Found TETR.IO username {username} for Discord ID {snowflake}')
+            logger.info(f'Resolved Discord ID {snowflake} -> {username}')
         else:
             await message.channel.send(
                 'No linked TETR.IO account found for the replied user. Please provide a username. Usage: `>tetra <username> [round]`'
