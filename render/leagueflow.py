@@ -214,13 +214,16 @@ def render_leagueflow(
     # Shade area under TR line
     if not no_shading:
         _set_rgb(ctx, LINE, SHADE_ALPHA)
+        last_y = 0
         for i, (t, tr) in enumerate(zip(times, tr_values)):
             x = x_from_time(t)
             y = y_from_tr(tr)
             if i == 0:
                 ctx.move_to(x, y)
             else:
+                ctx.line_to(x, last_y)
                 ctx.line_to(x, y)
+            last_y = y
         last_x = x_from_time(times[-1])
         first_x = x_from_time(times[0])
         axis_y = scaled_height - padding_bottom
@@ -233,13 +236,16 @@ def render_leagueflow(
     if not no_graph:
         _set_rgb(ctx, LINE)
         ctx.set_line_width(2.5 * scale)
+        last_y = 0
         for i, (t, tr) in enumerate(zip(times, tr_values)):
             x = x_from_time(t)
             y = y_from_tr(tr)
             if i == 0:
                 ctx.move_to(x, y)
             else:
+                ctx.line_to(x, last_y)
                 ctx.line_to(x, y)
+            last_y = y
         ctx.stroke()
 
     # Opponent markers
