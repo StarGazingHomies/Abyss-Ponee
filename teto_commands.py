@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 from datetime import datetime, timezone
@@ -187,6 +188,13 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
 
     username = username.lower()
 
+    user_data = await tetrioClient.user(username)
+    if not user_data['success']:
+        await send_reply(f"{user_data['error']['msg']}")
+        return
+
+    user_country = user_data['data']['country']
+
     gamemode = "zenithex" if expert else "zenith"
 
     best_scores_result: dict = await tetrioClient.leaderboard(username, gamemode, "top")
@@ -218,6 +226,35 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
             break
     else:
         entry["personal_rank"] = None
+
+    if entry["personal_rank"] == 1:
+        best_global_scores = await tetrioClient.records_leaderboard(f"{gamemode}_global", limit=500)
+        best_country_scores = await tetrioClient.records_leaderboard(f"{gamemode}_country_{user_country}", limit=500)
+
+        best_global_scores_id_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_global_scores]
+        best_global_id_list = list(itertools.chain.from_iterable(best_global_scores_id_nested))
+
+        if entry_id in best_global_id_list:
+            entry["global_rank"] = best_global_id_list.index(entry_id) + 1
+        else:
+            entry["global_rank"] = None
+
+        best_country_scores_id_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_country_scores]
+        best_country_id_list = list(itertools.chain.from_iterable(best_country_scores_id_nested))
+
+        if entry_id in best_country_id_list:
+            entry["country_rank"] = best_country_id_list.index(entry_id) + 1
+        else:
+            entry["country_rank"] = None
+
+        # with open("global.json", "w") as f:
+        #     json.dump(best_global_scores, f, indent=2)
+        #
+        # with open("country.json", "w") as f:
+        #     json.dump(best_country_scores, f, indent=2)
+    else:
+        entry["global_rank"] = None
+        entry["country_rank"] = None
 
     quickplay_render.render_quickplay(entry, "qp_output.png")
     await send_reply(file=discord.File("qp_output.png"))

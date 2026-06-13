@@ -40,6 +40,7 @@ ICON_SIZE   = 20 * SCALE   # side length of each mod icon
 ICON_GAP    = 4  * SCALE   # gap between icons
 BANNER_H    = 50 * SCALE
 GAP         = 12  * SCALE
+MIDDLE_GAP  = 10 * SCALE
 SMALL_GAP   = 5  * SCALE
 STAT_ROW_H  = 14 * SCALE
 STAT_FONT   = 8  * SCALE
@@ -236,6 +237,9 @@ def render_quickplay(entry, output_path="output.png"):
     """Render a single Quick Play (zenith) game entry to a PNG."""
     rank     = entry["personal_rank"]
     is_pb    = (rank == 1)
+    country_rank = entry["country_rank"]
+    global_rank = entry["global_rank"]
+    has_country_or_global_rank = (country_rank is not None) or (global_rank is not None)
     mods     = _active_mods(entry)
     reversed = _has_reverse(entry)
     rows     = _build_stat_rows(entry)
@@ -255,6 +259,9 @@ def render_quickplay(entry, output_path="output.png"):
     y = alt_rect_top + alt_rect_h
     # if is_pb:
     y += GAP + BANNER_H  # PB banner will display rank if it's not a pb
+    country_or_global_y = y
+    if has_country_or_global_rank:
+        y += GAP // 2 + BANNER_H # Country/Global banner
     y += GAP
     table_top = y
     y += len(rows) * STAT_ROW_H
@@ -398,6 +405,75 @@ def render_quickplay(entry, output_path="output.png"):
                              glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.1)
         pass
 
+
+    if has_country_or_global_rank:
+        # Left and right rectangles
+        y = country_or_global_y + PAD // 2
+        bx1 = PAD
+        bw1 = (RECT_WIDTH - 2 * PAD) // 2 - GAP // 2
+        bx2 = PAD + bw1 + GAP
+        bw2 = bw1
+
+        if country_rank == 1:
+            _set_rgb(ctx, PB_ORANGE)
+        elif reversed:
+            _set_rgb(ctx, REV_ALT_BG)
+        else:
+            _set_rgb(ctx, ALT_BG)
+
+        ctx.rectangle(rect_left + bx1, y, bw1, BANNER_H)
+        ctx.fill()
+
+        cx1 = rect_left + bx1 + bw1 // 2
+        _draw_text(ctx, "THIS WEEK'S COUNTRY RANK", cx1, y + 10 * SCALE,
+                   size=8 * SCALE, bold=False, colour=PERSONAL_RANK_COL, align="center")
+        if country_rank == 1:
+            _draw_text_shadow(ctx, "COUNTRY BEST", cx1, y + BANNER_H // 2 + 10 * SCALE,
+                         size=20 * SCALE, bold=True, colour=WHITE, align="center",
+                         shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
+                         glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.5)
+        else:
+            country_rank_text = f"{country_rank}" if country_rank is not None else "--"
+            hash_width = _draw_text(ctx, "#", 0, 0, size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            number_width = _draw_text(ctx, country_rank_text, 0, 0, size=20 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            if country_rank is not None:
+                _draw_text(ctx, "#", cx1 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
+                           size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            _draw_text_shadow(ctx, country_rank_text, cx1, y + BANNER_H // 2 + 10 * SCALE,
+                         size=20 * SCALE, bold=True, colour=SHADOW_COL, align="center",
+                         shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
+                         glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.1)
+
+        if global_rank == 1:
+            _set_rgb(ctx, PB_ORANGE)
+        elif reversed:
+            _set_rgb(ctx, REV_ALT_BG)
+        else:
+            _set_rgb(ctx, ALT_BG)
+
+        ctx.rectangle(rect_left + bx2, y, bw2, BANNER_H)
+        ctx.fill()
+
+        cx2 = rect_left + bx2 + bw2 // 2
+        _draw_text(ctx, "THIS WEEK'S GLOBAL RANK", cx2, y + 10 * SCALE,
+                   size=8 * SCALE, bold=False, colour=PERSONAL_RANK_COL, align="center")
+        if global_rank == 1:
+            _draw_text_shadow(ctx, "GLOBAL BEST", cx2, y + BANNER_H // 2 + 10 * SCALE,
+                         size=20 * SCALE, bold=True, colour=WHITE, align="center",
+                         shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
+                         glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.5)
+        else:
+            global_rank_text = f"{global_rank}" if global_rank is not None else "--"
+            hash_width = _draw_text(ctx, "#", 0, 0, size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            number_width = _draw_text(ctx, global_rank_text, 0, 0, size=20 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            if global_rank is not None:
+                _draw_text(ctx, "#", cx2 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
+                           size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            _draw_text_shadow(ctx, global_rank_text, cx2, y + BANNER_H // 2 + 10 * SCALE,
+                         size=20 * SCALE, bold=True, colour=SHADOW_COL, align="center",
+                         shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
+                         glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.1)
+
     # ── Mod icons (centered inside bottom of altitude rect) ───────────────
     if mods:
         total_w = len(mods) * ICON_SIZE + (len(mods) - 1) * ICON_GAP
@@ -455,5 +531,7 @@ if __name__ == "__main__":
     # Make mods visible for testing
     entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile", "doublehole"]
     # entries[9]["extras"]["zenith"]["mods"] = ["expert_reversed"]
-    entries[9]["personal_rank"] = 42
+    entries[9]["personal_rank"] = 1
+    entries[9]["country_rank"] = 5
+    entries[9]["global_rank"] = None
     render_quickplay(entries[9], args.output)
