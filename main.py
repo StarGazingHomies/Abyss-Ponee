@@ -42,6 +42,25 @@ if not token or not bot_owner or not headers:
     print('Token not found in token.txt')
     exit(1)
 
+@tree.command(
+    name="help",
+    description="Show this help message",
+)
+@app_commands.describe(
+    command="Optional specific command to get help for (tetra, qp, leagueflow)"
+)
+async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'qp', 'leagueflow']] = None):
+    if command is None:
+        description = "<:thinklight:905641655741329418>\n"
+        description += "Miscellaneous teto bot by Pony (on Tetr.io)"
+        await interaction.response.send_message(description)
+    elif command == 'tetra':
+        await interaction.response.send_message("/tetra [username] [game_number]\nView past Tetra League games.\nIf username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent).")
+    elif command == 'qp':
+        await interaction.response.send_message("/qp [username] [game_number] [expert] [sort_by]\nView past Quick Play games. If username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent or highest).\nExpert mode shows only expert games. Sort by can be 'recent' or 'altitude'.\nPersonal rank is capped at 100, country and global ranks at 500.")
+    elif command == 'leagueflow':
+        await interaction.response.send_message("/leagueflow [username] [render_arguments] [after] [before]\nVisualize your Tetra League progression.\nIf username is omitted, uses your linked account.\nRender arguments can include --no-points, --no-shading, --no-graph.\nAfter and before filter games by date (preferably YYYY-MM-DD, UTC, but stuff like '2 weeks ago' may be supported too).")
+
 
 @tree.command(
     name="tetra",
