@@ -145,7 +145,9 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
 @client.event
 async def on_ready():
     await tree.sync()
+    logger.info(f'Command tree synced with Discord.')
     tetrioClient.init(headers)
+    logger.info('Tetrio client initialized with headers from config.json.')
     logger.info(f'Logged in as {client.user}')
 
 @client.event

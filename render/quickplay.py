@@ -239,6 +239,9 @@ def render_quickplay(entry, output_path="output.png"):
     is_pb    = (rank == 1)
     country_rank = entry["country_rank"]
     global_rank = entry["global_rank"]
+    max_country_rank = entry["country_max_rank"]
+    max_global_rank = entry["global_max_rank"]
+    # has_country_or_global_rank = True
     has_country_or_global_rank = (country_rank is not None) or (global_rank is not None)
     mods     = _active_mods(entry)
     reversed = _has_reverse(entry)
@@ -252,7 +255,7 @@ def render_quickplay(entry, output_path="output.png"):
         # print("modified")
         alt_rect_h = GAP // 2 + ALT_SIZE + GAP // 2 + ICON_SIZE // 2
     else:
-        alt_rect_h = GAP // 2 + ALT_SIZE + GAP // 2
+        alt_rect_h = GAP // 2 + ALT_SIZE + GAP // 2 + ICON_SIZE // 4
     icon_y     = alt_text_y + GAP // 2 + ICON_SIZE // 4   # top of icons, only used when mods present
 
     # ── Pre-compute canvas height ─────────────────────────────────────────
@@ -433,12 +436,12 @@ def render_quickplay(entry, output_path="output.png"):
                          shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
                          glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.5)
         else:
-            country_rank_text = f"{country_rank}" if country_rank is not None else "--"
+            country_rank_text = f"{country_rank}" if country_rank is not None else f"{max_country_rank}+"
             hash_width = _draw_text(ctx, "#", 0, 0, size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
             number_width = _draw_text(ctx, country_rank_text, 0, 0, size=20 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
-            if country_rank is not None:
-                _draw_text(ctx, "#", cx1 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
-                           size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            # if country_rank is not None:
+            _draw_text(ctx, "#", cx1 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
+                       size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
             _draw_text_shadow(ctx, country_rank_text, cx1, y + BANNER_H // 2 + 10 * SCALE,
                          size=20 * SCALE, bold=True, colour=SHADOW_COL, align="center",
                          shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
@@ -463,12 +466,12 @@ def render_quickplay(entry, output_path="output.png"):
                          shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
                          glow_col=WHITE, glow_radius=5 * SCALE, glow_alpha=0.5)
         else:
-            global_rank_text = f"{global_rank}" if global_rank is not None else "--"
+            global_rank_text = f"{global_rank}" if global_rank is not None else f"{max_global_rank}+"
             hash_width = _draw_text(ctx, "#", 0, 0, size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
             number_width = _draw_text(ctx, global_rank_text, 0, 0, size=20 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
-            if global_rank is not None:
-                _draw_text(ctx, "#", cx2 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
-                           size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
+            # if global_rank is not None:
+            _draw_text(ctx, "#", cx2 - number_width / 2 - hash_width, y + BANNER_H // 2 + 10 * SCALE,
+                       size=10 * SCALE, bold=True, colour=PERSONAL_RANK_COL)
             _draw_text_shadow(ctx, global_rank_text, cx2, y + BANNER_H // 2 + 10 * SCALE,
                          size=20 * SCALE, bold=True, colour=SHADOW_COL, align="center",
                          shadow_offset=(0, 1 * SCALE), shadow_col=PB_ORANGE,
@@ -529,7 +532,8 @@ if __name__ == "__main__":
     # render_quickplay(entries[8], args.output)
 
     # Make mods visible for testing
-    entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile", "doublehole"]
+    entries[9]["extras"]["zenith"]["mods"] = []
+    # entries[9]["extras"]["zenith"]["mods"] = ["expert", "allspin", "volatile", "doublehole"]
     # entries[9]["extras"]["zenith"]["mods"] = ["expert_reversed"]
     entries[9]["personal_rank"] = 1
     entries[9]["country_rank"] = 5

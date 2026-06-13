@@ -220,41 +220,53 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
 
     # Find the true rank of the entry
     entry_id = entry["_id"]
+    entry_altitude = entry["results"]["stats"]["zenith"]["altitude"]
+
+    entry["global_rank"] = None
+    entry["country_rank"] = None
+    entry["personal_rank"] = None
+
     for i, e in enumerate(best_scores_result["data"]["entries"]):
         if e["_id"] == entry_id:
             entry["personal_rank"] = i + 1
             break
-    else:
-        entry["personal_rank"] = None
 
-    if entry["personal_rank"] == 1:
-        best_global_scores = await tetrioClient.records_leaderboard(f"{gamemode}_global", limit=500)
-        best_country_scores = await tetrioClient.records_leaderboard(f"{gamemode}_country_{user_country}", limit=500)
+    best_global_scores = await tetrioClient.records_leaderboard(f"{gamemode}_global", limit=500)
+    best_country_scores = await tetrioClient.records_leaderboard(f"{gamemode}_country_{user_country}", limit=500)
 
-        best_global_scores_id_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_global_scores]
-        best_global_id_list = list(itertools.chain.from_iterable(best_global_scores_id_nested))
+    best_global_scores_id_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_global_scores]
+    best_global_id_list = list(itertools.chain.from_iterable(best_global_scores_id_nested))
 
-        if entry_id in best_global_id_list:
-            entry["global_rank"] = best_global_id_list.index(entry_id) + 1
+    for global_score in best_global_scores:
+        for e in global_score["data"]["entries"]:
+            if e["_id"] == entry_id:
+                entry["global_rank"] = best_global_id_list.index(entry_id) + 1
+                break
+            if e["results"]["stats"]["zenith"]["altitude"] < entry_altitude:
+                entry["global_rank"] = best_global_id_list.index(e["_id"])
+                break
         else:
-            entry["global_rank"] = None
+            continue
+        break
 
-        best_country_scores_id_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_country_scores]
-        best_country_id_list = list(itertools.chain.from_iterable(best_country_scores_id_nested))
+    entry["global_max_rank"] = len(best_global_id_list) + 1
 
-        if entry_id in best_country_id_list:
-            entry["country_rank"] = best_country_id_list.index(entry_id) + 1
+    best_country_scores_nested = [[entry["_id"] for entry in s["data"]["entries"]] for s in best_country_scores]
+    best_country_id_list = list(itertools.chain.from_iterable(best_country_scores_nested))
+
+    for country_score in best_country_scores:
+        for e in country_score["data"]["entries"]:
+            if e["_id"] == entry_id:
+                entry["country_rank"] = best_country_id_list.index(entry_id) + 1
+                break
+            if e["results"]["stats"]["zenith"]["altitude"] < entry_altitude:
+                entry["country_rank"] = best_country_id_list.index(e["_id"])
+                break
         else:
-            entry["country_rank"] = None
+            continue
+        break
 
-        # with open("global.json", "w") as f:
-        #     json.dump(best_global_scores, f, indent=2)
-        #
-        # with open("country.json", "w") as f:
-        #     json.dump(best_country_scores, f, indent=2)
-    else:
-        entry["global_rank"] = None
-        entry["country_rank"] = None
+    entry["country_max_rank"] = len(best_country_id_list) + 1
 
     quickplay_render.render_quickplay(entry, "qp_output.png")
     await send_reply(file=discord.File("qp_output.png"))
