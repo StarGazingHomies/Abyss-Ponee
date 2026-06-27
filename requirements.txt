@@ -2,3 +2,6 @@ pycairo
 Pillow
 discord.py
 aiohttp
+cachetools
+numpy
+tzdata

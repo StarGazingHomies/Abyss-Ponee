@@ -9,8 +9,9 @@ import discord
 
 logger = logging.getLogger(__name__)
 
-import tetrio
+from web import tetrio
 from render import tetra as tetra_render
+from render import tetra_recent as tetra_recent_render
 from render import leagueflow as leagueflow_render
 from render import quickplay as quickplay_render
 
@@ -38,7 +39,7 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
 
     username = username.lower()
 
-    result: dict = await tetrioClient.leaderboard(username, "league", "recent")
+    result: dict = await tetrioClient.user_leaderboard(username, "league", "recent")
 
     if not result['success']:
         await send_reply(f"{result['error']['msg']}")
@@ -74,6 +75,102 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
 
     tetra_render.render(render_data, "output.png")
     await send_reply(file=discord.File("output.png"))
+
+
+TETRA_RECENT_DEFAULT = 10
+TETRA_RECENT_MAX = 30
+
+
+def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
+    """Condense a single league 'recent' record into the fields the renderer needs,
+    seen from *username*'s perspective. Returns None if it can't be interpreted."""
+    leaderboard = entry["results"]["leaderboard"]
+    if len(leaderboard) < 2:
+        return None
+
+    otherusers = entry.get("otherusers") or []
+    other_ids = {u["id"] for u in otherusers}
+
+    me = next((p for p in leaderboard if p["username"].lower() == username.lower()), None)
+    if me is None:
+        # Fall back to the player not listed among the "other" users.
+        me = next((p for p in leaderboard if p["id"] not in other_ids), leaderboard[0])
+    opp = next((p for p in leaderboard if p["id"] != me["id"]), None)
+    if opp is None:
+        return None
+
+    opp_info = next((u for u in otherusers if u["id"] == opp["id"]), None)
+
+    result = entry["extras"].get("result", "")
+    if "victory" in result:
+        outcome = "victory"
+    elif "defeat" in result:
+        outcome = "defeat"
+    else:
+        outcome = "nocontest"
+
+    tr_change = None
+    league = entry["extras"].get("league", {}).get(me["id"])
+    if league and len(league) >= 2 and league[0].get("tr") is not None and league[1].get("tr") is not None:
+        tr_change = league[1]["tr"] - league[0]["tr"]
+
+    stats = me["stats"]
+    return {
+        "outcome": outcome,
+        "my_wins": me["wins"],
+        "opp_wins": opp["wins"],
+        "opponent": opp["username"],
+        "country": (opp_info or {}).get("country"),
+        "supporter": (opp_info or {}).get("supporter", False),
+        "apm": stats["apm"],
+        "pps": stats["pps"],
+        "vs": stats["vsscore"],
+        "ts": entry["ts"],
+        "tr_change": tr_change,
+    }
+
+
+async def handle_tetra_recent(send_reply, send_message, author_id: int, username: Optional[str] = None, count: int = TETRA_RECENT_DEFAULT, tz: Optional[str] = None):
+    """Core logic for the tetra_recent command. send_reply and send_message are callables."""
+
+    tzinfo = tetra_recent_render.parse_timezone(tz)
+    if tzinfo is None:
+        await send_message(f'Invalid timezone: `{tz}`. Use an IANA name (e.g. `America/New_York`) or a UTC offset (e.g. `UTC-4`).')
+        return
+
+    if not username:
+        username = await resolve_username(author_id)
+        if not username:
+            await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username. Usage: `/tetra_recent <username> [count]`')
+            return
+
+    username = username.lower()
+
+    result: dict = await tetrioClient.user_leaderboard(username, "league", "recent")
+
+    if not result['success']:
+        await send_reply(f"{result['error']['msg']}")
+        return
+
+    entries = result["data"]["entries"]
+    if not entries:
+        await send_message('No recent Tetra League games found for this user.')
+        return
+
+    count = max(1, min(count, TETRA_RECENT_MAX, len(entries)))
+
+    games = []
+    for entry in entries[:count]:
+        game = _build_recent_game(entry, username)
+        if game is not None:
+            games.append(game)
+
+    if not games:
+        await send_message('No recent Tetra League games found for this user.')
+        return
+
+    tetra_recent_render.render(games, "recent_output.png", tz=tzinfo)
+    await send_reply(file=discord.File("recent_output.png"))
 
 
 async def handle_tetra_message(message: discord.Message):
@@ -197,17 +294,20 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
 
     gamemode = "zenithex" if expert else "zenith"
 
-    best_scores_result: dict = await tetrioClient.leaderboard(username, gamemode, "top")
+    best_scores_result: dict = await tetrioClient.user_leaderboard(username, gamemode, "top")
     if not best_scores_result['success']:
         await send_reply(f"{best_scores_result['error']['msg']}")
         return
 
     if sort_by == 'recent':
-        result: dict = await tetrioClient.leaderboard(username, gamemode, "recent")
+        result: dict = await tetrioClient.user_leaderboard(username, gamemode, "recent")
 
         if not result['success']:
             await send_reply(f"{result['error']['msg']}")
             return
+
+        with open("quickplay_output_2.json", "w") as f:
+            json.dump(result, f, indent=4)
     else:
         result = best_scores_result
 

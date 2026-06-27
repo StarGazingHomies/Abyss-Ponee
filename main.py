@@ -5,8 +5,11 @@ import logging
 
 from teto_commands import tetrioClient
 from teto_commands import handle_tetra, handle_tetra_message
+from teto_commands import handle_tetra_recent
 from teto_commands import handle_leagueflow
 from teto_commands import handle_quickplay
+from pony_commands import manebooruClient
+from pony_commands import handle_image
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,19 +50,23 @@ if not token or not bot_owner or not headers:
     description="Show this help message",
 )
 @app_commands.describe(
-    command="Optional specific command to get help for (tetra, qp, leagueflow)"
+    command="Optional specific command to get help for (tetra, qp, leagueflow, image)"
 )
-async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'qp', 'leagueflow']] = None):
+async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image']] = None):
     if command is None:
         description = "<:thinklight:905641655741329418>\n"
         description += "Miscellaneous teto bot by Pony (on Tetr.io)"
         await interaction.response.send_message(description)
     elif command == 'tetra':
         await interaction.response.send_message("/tetra [username] [game_number]\nView past Tetra League games.\nIf username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent).")
+    elif command == 'tetra_recent':
+        await interaction.response.send_message("/tetra_recent [username] [count] [timezone]\nView a condensed list of recent Tetra League games.\nIf username is omitted, uses your linked account.\nCount specifies how many recent games to show (1-30, default 10).\nTimezone sets the game times: an IANA name (e.g. America/New_York) or a UTC offset (e.g. UTC-4). Defaults to UTC.")
     elif command == 'qp':
         await interaction.response.send_message("/qp [username] [game_number] [expert] [sort_by]\nView past Quick Play games. If username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent or highest).\nExpert mode shows only expert games. Sort by can be 'recent' or 'altitude'.\nPersonal rank is capped at 100, country and global ranks at 500.")
     elif command == 'leagueflow':
         await interaction.response.send_message("/leagueflow [username] [render_arguments] [after] [before]\nVisualize your Tetra League progression.\nIf username is omitted, uses your linked account.\nRender arguments can include --no-points, --no-shading, --no-graph.\nAfter and before filter games by date (preferably YYYY-MM-DD, UTC, but stuff like '2 weeks ago' may be supported too).")
+    elif command == 'image':
+        await interaction.response.send_message("/image <tags> [sort] [direction] [result]\nSearch Manebooru for an image using the safe filter.\nTags are comma-separated (e.g. 'twilight sparkle, solo').\nSort can be score (top rated), first_seen_at (newest), or random.\nDirection is desc or asc. Result picks which match to show (1-50, default 1).")
 
 
 @tree.command(
@@ -84,6 +91,32 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted).')
         logger.error(f'Error in /tetra command: {e}', exc_info=True)
+
+
+@tree.command(
+    name="tetra_recent",
+    description="View a condensed list of recent Tetra League games",
+)
+@app_commands.describe(
+    username="TETR.IO username (defaults to your linked account)",
+    count="How many recent games to show (1-30, default 10)",
+    timezone="Timezone for game times: IANA name (e.g. America/New_York) or UTC offset (e.g. UTC-4). Default UTC",
+)
+async def tetra_recent_command(interaction: discord.Interaction, username: Optional[str] = None, count: Optional[int] = None, timezone: Optional[str] = None):
+    log_command(interaction, 'tetra_recent', username=username, count=count, timezone=timezone)
+    await interaction.response.defer()
+    try:
+        await handle_tetra_recent(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            author_id=interaction.user.id,
+            username=username,
+            count=count or 10,
+            tz=timezone,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted).')
+        logger.error(f'Error in /tetra_recent command: {e}', exc_info=True)
 
 
 @tree.command(
@@ -142,12 +175,48 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
         await interaction.followup.send(f'Internal Error (details omitted).')
         logger.error(f'Error in /leagueflow command: {e}', exc_info=True)
 
+@tree.command(
+    name="image",
+    description="Search Manebooru (safe filter) for an image",
+)
+@app_commands.describe(
+    tags="Comma-separated search tags (e.g. 'twilight sparkle, solo')",
+    sort="How to order results (default: top rated)",
+    direction="Sort direction (default: descending)",
+    result="Which result to show (1-50, default 1)",
+)
+async def image_command(interaction: discord.Interaction, tags: str,
+                        sort: Literal['score', 'first_seen_at', 'random'] = 'score',
+                        direction: Literal['desc', 'asc'] = 'desc',
+                        result: Optional[int] = None):
+    log_command(interaction, 'image', tags=tags, sort=sort, direction=direction, result=result)
+    # Check if bot owner
+    if interaction.user.id != bot_owner:
+        await interaction.response.send_message('This command is restricted to the bot owner for now.', ephemeral=True)
+        return
+    await interaction.response.defer()
+    try:
+        await handle_image(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            query=tags,
+            sort_field=sort,
+            sort_direction=direction,
+            index=result or 1,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted).')
+        logger.error(f'Error in /image command: {e}', exc_info=True)
+
+
 @client.event
 async def on_ready():
     await tree.sync()
     logger.info(f'Command tree synced with Discord.')
     tetrioClient.init(headers)
     logger.info('Tetrio client initialized with headers from config.json.')
+    manebooruClient.init(headers)
+    logger.info('Manebooru client initialized.')
     logger.info(f'Logged in as {client.user}')
 
 @client.event
@@ -161,6 +230,7 @@ async def on_message(message):
         logger.info(f'>stop | {message.author} ({message.author.id})')
         await message.channel.send('Shutting down...')
         await tetrioClient.shutdown()
+        await manebooruClient.shutdown()
         await client.close()
 
     if message.content.startswith('>tetra'):
