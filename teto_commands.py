@@ -102,7 +102,11 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
     opp_info = next((u for u in otherusers if u["id"] == opp["id"]), None)
 
     result = entry["extras"].get("result", "")
-    if "victory" in result:
+    if result == "dqvictory":
+        outcome = "dqvictory"
+    elif result == "dqdefeat":
+        outcome = "dqdefeat"
+    elif "victory" in result:
         outcome = "victory"
     elif "defeat" in result:
         outcome = "defeat"
