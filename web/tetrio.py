@@ -42,7 +42,7 @@ class TetraLeagueAPI(CachedAPIClient):
             if last_id is not None:
                 params[page_using] = last_id
 
-            result_json = await self.request(path, params, cache_time)
+            result_json = await self.request(path, params, cache_time=cache_time)
             if 'data' not in result_json or not result_json['data']:
                 break
 
