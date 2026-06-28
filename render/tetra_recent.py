@@ -340,6 +340,9 @@ def render(games, output_path="output_recent.png", tz=timezone.utc):
 
         # ── Stats (int large, decimal small/subscript) ──────────────────
         for value, col_cx in ((g['apm'], APM_CX), (g['pps'], PPS_CX), (g['vs'], VS_CX)):
+            if value is None:
+                _draw_text(ctx, "-", col_cx, base_y, size=STAT_SIZE, colour=STAT, align="center")
+                continue
             intp, decp = _split_decimal(value)
             _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
                         col_cx, base_y, STAT, align="center")
