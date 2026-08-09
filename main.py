@@ -99,11 +99,11 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
 )
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
-    count="How many recent games to show (1-100, default 10)",
     timezone="Timezone for game times: IANA name (e.g. America/New_York) or UTC offset (e.g. UTC-4). Default UTC",
+    page_size="How large each page is (1-30, default 10)."
 )
-async def tetra_recent_command(interaction: discord.Interaction, username: Optional[str] = None, count: Optional[int] = None, timezone: Optional[str] = None):
-    log_command(interaction, 'tetra_recent', username=username, count=count, timezone=timezone)
+async def tetra_recent_command(interaction: discord.Interaction, username: Optional[str] = None, timezone: Optional[str] = None, page_size: Optional[int] = None):
+    log_command(interaction, 'tetra_recent', username=username, page_size=page_size, timezone=timezone)
     await interaction.response.defer()
     try:
         await handle_tetra_recent(
@@ -111,7 +111,6 @@ async def tetra_recent_command(interaction: discord.Interaction, username: Optio
             send_message=lambda msg: interaction.followup.send(msg),
             author_id=interaction.user.id,
             username=username,
-            count=count or 10,
             tz=timezone,
         )
     except Exception as e:

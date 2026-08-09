@@ -247,9 +247,36 @@ def _format_date(ts, tz=timezone.utc):
     return f"{dt.month}/{dt.day}/{dt.year}, {hour12}:{dt.minute:02d}:{dt.second:02d} {ampm}"
 
 
+_SUMMARY_EXCLUDED = {'nocontest', 'dqvictory', 'dqdefeat', 'nullified'}
+def _compute_summary(games):
+    counted = [g for g in games if g['outcome'] not in _SUMMARY_EXCLUDED]
+    def avg(key):
+        vals = [g[key] for g in counted if g[key] is not None]
+        return sum(vals) / len(vals) if vals else None
+    return {
+        'apm': avg('apm'), 'pps': avg('pps'), 'vs': avg('vs'),
+        'tr_total': sum(g['tr_change'] or 0 for g in games),
+    }
+
+
+def _draw_tr(ctx, delta_tr, base_y):
+    change = delta_tr
+    if change is not None:
+        if round(change, 2) == 0:
+            head, dec = "±0", ".00"
+        else:
+            whole = f"{change:+.2f}"
+            dot = whole.find('.')
+            head, dec = whole[:dot], whole[dot:]
+        _draw_parts(ctx, [(head, TR_SIZE, True, 0, TR_INT),
+                          (dec, TR_DEC, True, SUB_DY, TR_FADE),
+                          (" TR", TR_SUFFIX, True, 0, TR_FADE)],
+                    TR_RIGHT, base_y, TR_INT, align="right")
+
+
 # ── Main render ─────────────────────────────────────────────────────────────────
 
-def render(games, output_path="output_recent.png", tz=timezone.utc):
+def render(games, output_path="output_recent.png", tz=timezone.utc, summary=False):
     """Render a condensed list of recent Tetra League games.
 
     *tz* is a tzinfo used to display each game's timestamp.
@@ -270,7 +297,8 @@ def render(games, output_path="output_recent.png", tz=timezone.utc):
     """
     s = SCALE
     n = len(games)
-    height = TOP + n * ROW_H + (n - 1) * ROW_GAP + BOTTOM
+    rows = n + (1 if summary else 0)
+    height = TOP + rows * ROW_H + (rows - 1) * ROW_GAP + BOTTOM
 
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, W * s, height * s)
     ctx = cairo.Context(surface)
@@ -356,18 +384,27 @@ def render(games, output_path="output_recent.png", tz=timezone.utc):
                    colour=DATE, align="center")
 
         # ── TR change ───────────────────────────────────────────────────
-        change = g.get('tr_change')
-        if change is not None:
-            if round(change, 2) == 0:
-                head, dec = "±0", ".00"
+        _draw_tr(ctx, g.get('tr_change'), base_y)
+
+    if summary:
+        stats = _compute_summary(games)
+        y = TOP + n * (ROW_H + ROW_GAP)
+        cy = y + ROW_H / 2
+        base_y = cy + STAT_SIZE * 0.34
+        _set_rgb(ctx, PANEL)
+        _rounded_rect(ctx, PANEL_L, y, PANEL_R - PANEL_L, ROW_H, PANEL_RAD)
+        ctx.fill()
+        _draw_text(ctx, "PAGE AVERAGE", RESULT_X, base_y, size=RESULT_SIZE,
+                   bold=True, colour=NC_TEXT, align="right")
+        for value, col_cx in ((stats['apm'], APM_CX), (stats['pps'], PPS_CX), (stats['vs'], VS_CX)):
+            if value is None:
+                _draw_text(ctx, "-", col_cx, base_y, size=STAT_SIZE, colour=STAT, align="center")
             else:
-                whole = f"{change:+.2f}"
-                dot = whole.find('.')
-                head, dec = whole[:dot], whole[dot:]
-            _draw_parts(ctx, [(head, TR_SIZE, True, 0, TR_INT),
-                              (dec, TR_DEC, True, SUB_DY, TR_FADE),
-                              (" TR", TR_SUFFIX, True, 0, TR_FADE)],
-                        TR_RIGHT, base_y, TR_INT, align="right")
+                intp, decp = _split_decimal(value)
+                _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
+                            col_cx, base_y, STAT, align="center")
+        # _draw_text(ctx, "NET", DATE_CX, base_y, size=DATE_SIZE, colour=DATE, align="center")
+        _draw_tr(ctx, stats['tr_total'], base_y)
 
     surface.write_to_png(output_path)
 
@@ -381,6 +418,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", default="recent_output.png")
     parser.add_argument("--count", "-c", type=int, default=14)
     parser.add_argument("--tz", default=None, help="IANA name or UTC offset (e.g. America/New_York, UTC-4)")
+    parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:
@@ -419,4 +457,4 @@ if __name__ == "__main__":
         }
 
     games = [build(e) for e in data['data']['entries'][:args.count]]
-    render(games, args.output, tz=parse_timezone(args.tz) or timezone.utc)
+    render(games, args.output, tz=parse_timezone(args.tz) or timezone.utc, summary=args.summary)

@@ -2,6 +2,8 @@ import itertools
 import json
 import logging
 from datetime import datetime, timezone
+import io
+import math
 import dateparser
 from typing import Optional
 
@@ -77,7 +79,6 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
     await send_reply(file=discord.File("output.png"))
 
 
-TETRA_RECENT_DEFAULT = 10
 TETRA_RECENT_MAX = 100
 
 
@@ -136,7 +137,60 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
     }
 
 
-async def handle_tetra_recent(send_reply, send_message, author_id: int, username: Optional[str] = None, count: int = TETRA_RECENT_DEFAULT, tz: Optional[str] = None):
+class TetraRecentPaginator(discord.ui.View):
+    def __init__(self, games, tz, page_size):
+        super().__init__(timeout=600)      # must stay < 15 min: on_timeout edits via the original interaction token
+        self.games = games
+        self.tz = tz
+        self.page = 0
+        self.page_size = page_size
+        self.num_pages = math.ceil(len(games) / self.page_size)
+        self.message = None                # set after sending, used by on_timeout
+        self._cache = {}                   # page index -> PNG bytes
+        self._sync_buttons()               # must run AFTER super().__init__()
+
+    def render_page(self) -> discord.File:
+        if self.page not in self._cache:
+            start = self.page * self.page_size
+            buf = io.BytesIO()
+            tetra_recent_render.render(self.games[start:start + self.page_size],
+                                       buf, tz=self.tz, summary=True)
+            self._cache[self.page] = buf.getvalue()
+        return discord.File(io.BytesIO(self._cache[self.page]), filename="tetra_recent.png")
+
+    def _sync_buttons(self):
+        self.prev_button.disabled = (self.page <= 0)
+        self.next_button.disabled = (self.page >= self.num_pages - 1)
+        self.page_label.label = f"Page {self.page + 1}/{self.num_pages}"
+
+    async def _flip(self, interaction: discord.Interaction, delta: int):
+        self.page = max(0, min(self.page + delta, self.num_pages - 1))
+        self._sync_buttons()
+        await interaction.response.edit_message(attachments=[self.render_page()], view=self)
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, disabled=True)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, -1)
+
+    @discord.ui.button(label="Page 1/1", style=discord.ButtonStyle.gray, disabled=True)
+    async def page_label(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass  # permanently disabled indicator; decorator still requires a coroutine
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, +1)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass  # message deleted or token expired
+
+
+async def handle_tetra_recent(send_reply, send_message, author_id: int, username: Optional[str] = None, page_size: Optional[int] = None, tz: Optional[str] = None):
     """Core logic for the tetra_recent command. send_reply and send_message are callables."""
 
     tzinfo = tetra_recent_render.parse_timezone(tz)
@@ -163,7 +217,9 @@ async def handle_tetra_recent(send_reply, send_message, author_id: int, username
         await send_message('No recent Tetra League games found for this user.')
         return
 
-    count = max(1, min(count, TETRA_RECENT_MAX, len(entries)))
+    # count = max(1, min(count, TETRA_RECENT_MAX, len(entries)))
+    count = min(TETRA_RECENT_MAX, len(entries))
+    page_size = max(1, min(page_size, 30)) if page_size is not None else 10
 
     games = []
     for entry in entries[:count]:
@@ -176,7 +232,11 @@ async def handle_tetra_recent(send_reply, send_message, author_id: int, username
         return
 
     tetra_recent_render.render(games, "recent_output.png", tz=tzinfo)
-    await send_reply(file=discord.File("recent_output.png"))
+    paginator = TetraRecentPaginator(games, tzinfo, page_size=page_size)
+    if paginator.num_pages > 1:
+        paginator.message = await send_reply(file=paginator.render_page(), view=paginator)
+    else:
+        await send_reply(file=paginator.render_page())   # single page: footer, no buttons
 
 
 async def handle_tetra_message(message: discord.Message):
