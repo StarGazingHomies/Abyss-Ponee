@@ -1,0 +1,48 @@
+[
+    {
+        "version": "v0.0.6",
+        "date": "2026-08-09",
+        "changes": [
+            "Added /changelog.",
+            "Added a `force_update` option to /tetra, in case people finish tl games quickly.",
+            "Changed /tetra_recent to use pagination.",
+            "Fixed NULLIFIED result rendering for /tetra_recent."
+        ]
+    },
+    {
+        "version": "v0.0.5",
+        "date": "2026-06-27",
+        "changes": [
+            "Added /tetra_recent",
+            "Added pony imageboards for personal use."
+        ]
+    },
+    {
+        "version": "v0.0.4",
+        "date": "2026-06-12",
+        "changes": [
+            "Added /qp"
+        ]
+    },
+    {
+        "version": "v0.0.3",
+        "date": "2026-06-02",
+        "changes": [
+            "Added /leagueflow"
+        ]
+    },
+    {
+        "version": "v0.0.2",
+        "date": "2026-04-02",
+        "changes": [
+            "Some small /tetra rendering fixes."
+        ]
+    },
+    {
+        "version": "v0.0.1",
+        "date": "2026-03-05",
+        "changes": [
+            "Initial release with /tetra."
+        ]
+    }
+]

@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 import io
 import math
+import pathlib
 import dateparser
 from typing import Optional
 
@@ -168,7 +169,7 @@ class PageJumpModal(discord.ui.Modal, title="Jump to page"):
         p = self.paginator
         p.page = max(0, min(target, p.num_pages - 1))
         p._sync_buttons()
-        await interaction.response.edit_message(attachments=[p.render_page()], view=p)
+        await interaction.response.edit_message(**p.page_kwargs(), view=p)
 
 
 class TetraRecentPaginator(discord.ui.View):
@@ -194,6 +195,10 @@ class TetraRecentPaginator(discord.ui.View):
                                        buf, tz=self.tz, summary=True)
             self._cache[self.page] = buf.getvalue()
         return discord.File(io.BytesIO(self._cache[self.page]), filename="tetra_recent.png")
+
+    def page_kwargs(self):
+        """Edit-message kwargs for the current page (shared with PageJumpModal)."""
+        return {"attachments": [self.render_page()]}
 
     async def _flip(self, interaction: discord.Interaction, delta: int):
         target = self.page + delta
@@ -252,6 +257,95 @@ class TetraRecentPaginator(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass  # message deleted or token expired
+
+
+CHANGELOG_PATH = pathlib.Path(__file__).parent / 'changelog.json'
+CHANGELOG_PAGE_SIZE = 5
+
+
+class ChangelogPaginator(discord.ui.View):
+    def __init__(self, entries):
+        super().__init__(timeout=600)      # must stay < 15 min: on_timeout edits via the original interaction token
+        self.entries = entries
+        self.page = 0
+        self.num_pages = math.ceil(len(entries) / CHANGELOG_PAGE_SIZE)
+        self.message = None                # set after sending, used by on_timeout
+        self._sync_buttons()               # must run AFTER super().__init__()
+
+    def build_embed(self) -> discord.Embed:
+        start = self.page * CHANGELOG_PAGE_SIZE
+        embed = discord.Embed(title="Changelog", colour=discord.Colour.green())
+        for entry in self.entries[start:start + CHANGELOG_PAGE_SIZE]:
+            name = entry.get('version') or '?'
+            if entry.get('date'):
+                name += f" — {entry['date']}"
+            value = '\n'.join(f'- {c}' for c in entry.get('changes') or []) or '(no details)'
+            embed.add_field(name=name[:256], value=value[:1024], inline=False)
+        embed.set_footer(text=f"Page {self.page + 1}/{self.num_pages}")
+        return embed
+
+    def page_kwargs(self):
+        """Edit-message kwargs for the current page (shared with PageJumpModal)."""
+        return {"embed": self.build_embed()}
+
+    def _sync_buttons(self):
+        self.first_button.disabled = (self.page <= 0)
+        self.prev_button.disabled = (self.page <= 0)
+        self.next_button.disabled = (self.page >= self.num_pages - 1)
+        self.page_label.disabled = (self.num_pages <= 1)
+        self.page_label.label = f"Page {self.page + 1}/{self.num_pages}"
+
+    async def _flip(self, interaction: discord.Interaction, delta: int):
+        self.page = max(0, min(self.page + delta, self.num_pages - 1))
+        self._sync_buttons()
+        await interaction.response.edit_message(**self.page_kwargs(), view=self)
+
+    @discord.ui.button(label="First", style=discord.ButtonStyle.secondary, disabled=True)
+    async def first_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, -self.page)  # go to page 0
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, disabled=True)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, -1)
+
+    @discord.ui.button(label="Page 1/1", style=discord.ButtonStyle.gray)
+    async def page_label(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(PageJumpModal(self))
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, +1)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass  # message deleted or token expired
+
+
+async def handle_changelog(send_reply, send_message):
+    """Core logic for the changelog command. send_reply and send_message are callables."""
+
+    try:
+        with open(CHANGELOG_PATH, 'r', encoding='utf-8') as f:
+            entries = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f'Failed to load {CHANGELOG_PATH}: {e}')
+        await send_message('Changelog is unavailable right now.')
+        return
+
+    if not entries:
+        await send_message('No changelog entries yet.')
+        return
+
+    paginator = ChangelogPaginator(entries)
+    if paginator.num_pages > 1:
+        paginator.message = await send_reply(embed=paginator.build_embed(), view=paginator)
+    else:
+        await send_reply(embed=paginator.build_embed())   # single page: no buttons
 
 
 async def handle_tetra_recent(send_reply, send_message, author_id: int, username: Optional[str] = None, page_size: Optional[int] = None, tz: Optional[str] = None):

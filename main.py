@@ -8,6 +8,7 @@ from teto_commands import handle_tetra, handle_tetra_message
 from teto_commands import handle_tetra_recent
 from teto_commands import handle_leagueflow
 from teto_commands import handle_quickplay
+from teto_commands import handle_changelog
 from pony_commands import manebooruClient
 from pony_commands import handle_image
 
@@ -52,7 +53,7 @@ if not token or not bot_owner or not headers:
 @app_commands.describe(
     command="Optional specific command to get help for (tetra, qp, leagueflow, image)"
 )
-async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image']] = None):
+async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog']] = None):
     if command is None:
         description = "<:thinklight:905641655741329418>\n"
         description += "Miscellaneous teto bot by Pony (on Tetr.io)"
@@ -67,6 +68,25 @@ async def help_command(interaction: discord.Interaction, command: Optional[Liter
         await interaction.response.send_message("/leagueflow [username] [render_arguments] [after] [before]\nVisualize your Tetra League progression.\nIf username is omitted, uses your linked account.\nRender arguments can include --no-points, --no-shading, --no-graph.\nAfter and before filter games by date (preferably YYYY-MM-DD, UTC, but stuff like '2 weeks ago' may be supported too).")
     elif command == 'image':
         await interaction.response.send_message("/image <tags> [sort] [direction] [result]\nSearch Manebooru for an image using the safe filter.\nTags are comma-separated (e.g. 'twilight sparkle, solo').\nSort can be score (top rated), first_seen_at (newest), or random.\nDirection is desc or asc. Result picks which match to show (1-50, default 1).")
+    elif command == 'changelog':
+        await interaction.response.send_message("/changelog\nView past changes to the bot, newest first, 5 versions per page.")
+
+
+@tree.command(
+    name="changelog",
+    description="View past changes to the bot",
+)
+async def changelog_command(interaction: discord.Interaction):
+    log_command(interaction, 'changelog')
+    await interaction.response.defer()
+    try:
+        await handle_changelog(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
+        logger.error(f'Error in /changelog command: {e}', exc_info=True)
 
 
 @tree.command(
