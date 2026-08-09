@@ -47,8 +47,10 @@ BADGE_BLUE    = (0.545, 0.545, 1.000)   # (139,139,255) loss
 BADGE_NC      = (0.118, 0.176, 0.102)   # no-contest faint pennant (30,45,26)
 BADGE_DQ_WIN  = (0.149, 0.149, 0.063)   # dark olive pennant for a DQ win
 BADGE_DQ_LOSS = (0.235, 0.024, 0.086)   # dark maroon pennant for a DQ loss
+BADGE_NULL    = (0.027, 0.043, 0.023)   # almost black for nullified
 BADGE_TEXT    = (0.020, 0.027, 0.016)   # near-black text on coloured pennant
 NC_TEXT       = (0.521, 0.741, 0.482)   # "NO CONTEST" green (133,189,123)
+NULL_TEXT     = (0.300, 0.220, 0.106)   # dark "NULLIFIED"
 DQ_WIN_TEXT   = (0.961, 0.553, 0.149)   # orange "VICTORY by DQ"
 DQ_LOSS_TEXT  = (0.949, 0.110, 0.400)   # pink "DEFEAT by DQ"
 USERNAME      = (0.976, 0.980, 0.961)   # (249,250,245)
@@ -299,6 +301,7 @@ def render(games, output_path="output_recent.png", tz=timezone.utc):
             'defeat':    BADGE_BLUE,
             'dqvictory': BADGE_DQ_WIN,
             'dqdefeat':  BADGE_DQ_LOSS,
+            'nullified': BADGE_NULL,
         }.get(outcome, BADGE_NC)
 
         ctx.new_sub_path()
@@ -319,6 +322,7 @@ def render(games, output_path="output_recent.png", tz=timezone.utc):
             text, col = {
                 'dqvictory': ("VICTORY by DQ", DQ_WIN_TEXT),
                 'dqdefeat':  ("DEFEAT by DQ", DQ_LOSS_TEXT),
+                'nullified':  ("NULLIFIED", NULL_TEXT),
             }.get(outcome, ("NO CONTEST", NC_TEXT))
             _draw_text(ctx, text, RESULT_X, base_y, size=RESULT_SIZE,
                        bold=True, colour=col, align="right")

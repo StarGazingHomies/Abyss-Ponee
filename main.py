@@ -89,7 +89,7 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
             round_num=game_number or 1,
         )
     except Exception as e:
-        await interaction.followup.send(f'Internal Error (details omitted).')
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /tetra command: {e}', exc_info=True)
 
 
@@ -99,7 +99,7 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
 )
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
-    count="How many recent games to show (1-30, default 10)",
+    count="How many recent games to show (1-100, default 10)",
     timezone="Timezone for game times: IANA name (e.g. America/New_York) or UTC offset (e.g. UTC-4). Default UTC",
 )
 async def tetra_recent_command(interaction: discord.Interaction, username: Optional[str] = None, count: Optional[int] = None, timezone: Optional[str] = None):
@@ -115,7 +115,7 @@ async def tetra_recent_command(interaction: discord.Interaction, username: Optio
             tz=timezone,
         )
     except Exception as e:
-        await interaction.followup.send(f'Internal Error (details omitted).')
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /tetra_recent command: {e}', exc_info=True)
 
 
@@ -144,7 +144,7 @@ async def quickplay_command(interaction: discord.Interaction, username: Optional
             sort_by=sort_by,
         )
     except Exception as e:
-        await interaction.followup.send(f'Internal Error (details omitted).')
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /qp command: {e}', exc_info=True)
 
 
@@ -172,7 +172,7 @@ async def leagueflow_command(interaction: discord.Interaction, username: Optiona
             before=before,
         )
     except Exception as e:
-        await interaction.followup.send(f'Internal Error (details omitted).')
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /leagueflow command: {e}', exc_info=True)
 
 @tree.command(
@@ -205,7 +205,7 @@ async def image_command(interaction: discord.Interaction, tags: str,
             index=result or 1,
         )
     except Exception as e:
-        await interaction.followup.send(f'Internal Error (details omitted).')
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /image command: {e}', exc_info=True)
 
 

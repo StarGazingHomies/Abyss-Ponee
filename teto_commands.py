@@ -78,7 +78,7 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
 
 
 TETRA_RECENT_DEFAULT = 10
-TETRA_RECENT_MAX = 30
+TETRA_RECENT_MAX = 100
 
 
 def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
@@ -110,6 +110,8 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
         outcome = "victory"
     elif "defeat" in result:
         outcome = "defeat"
+    elif "nullified" in result:
+        outcome = "nullified"
     else:
         outcome = "nocontest"
 
