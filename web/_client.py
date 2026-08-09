@@ -54,19 +54,22 @@ class CachedAPIClient:
         return method + ' ' + '/'.join(path) + '?' + '&'.join(f'{k}={v}' for k, v in params.items())
 
     async def request(self, path: tuple[str, ...], params=None, method: str = 'GET',
-                      cache_time: int = 60 * 5) -> dict:
+                      cache_time: int = 60 * 5, force_update: bool = False) -> dict:
         if params is None:
             params = {}
         if not self.initialized:
             raise Exception(f'{type(self).__name__} not initialized. Call init() first.')
 
         key = self._cache_key(method, path, params)
-        try:
-            cached = self.cache[key]
-            logger.info(f'{self.base_url} at {key} CACHE HIT')
-            return cached['data']
-        except KeyError:
-            logger.info(f'{self.base_url} at {key} CACHE MISS')
+        if force_update:
+            logger.info(f'{self.base_url} at {key} CACHE BYPASS (force_update)')
+        else:
+            try:
+                cached = self.cache[key]
+                logger.info(f'{self.base_url} at {key} CACHE HIT')
+                return cached['data']
+            except KeyError:
+                logger.info(f'{self.base_url} at {key} CACHE MISS')
 
         url = self.base_url + '/'.join(path)
         result = await self.client.request(method, url, params=params)

@@ -32,7 +32,7 @@ class TetraLeagueAPI(CachedAPIClient):
     async def request_paginate(self, path: tuple[str, ...], params=None,
                                page_using: Literal['after', 'before', 'limit'] = 'after',
                                page_times: int = 5,
-                               cache_time: int = 60 * 10) -> list[dict]:
+                               force_update: bool = False) -> list[dict]:
         if params is None:
             params = {}
 
@@ -42,7 +42,7 @@ class TetraLeagueAPI(CachedAPIClient):
             if last_id is not None:
                 params[page_using] = last_id
 
-            result_json = await self.request(path, params, cache_time=cache_time)
+            result_json = await self.request(path, params, force_update=force_update)
             if 'data' not in result_json or not result_json['data']:
                 break
 
@@ -54,15 +54,15 @@ class TetraLeagueAPI(CachedAPIClient):
 
         return results
 
-    async def user(self, user: str):
+    async def user(self, user: str, force_update: bool = False):
         path = ('users', user)
-        return await self.request(path)
+        return await self.request(path, force_update=force_update)
 
-    async def user_league(self, user: str):
+    async def user_league(self, user: str, force_update: bool = False):
         path = ('users', user, 'summaries', 'league')
-        return await self.request(path)
+        return await self.request(path, force_update=force_update)
 
-    async def user_leaderboard(self, user, gamemode, leaderboard):
+    async def user_leaderboard(self, user, gamemode, leaderboard, after=None, force_update: bool = False):
         if gamemode not in ('40l', 'blitz', 'zenith', 'zenithex', 'league'):
             raise ValueError('Invalid gamemode')
 
@@ -70,19 +70,22 @@ class TetraLeagueAPI(CachedAPIClient):
             raise ValueError('Invalid leaderboard')
 
         path = ('users', user, 'records', gamemode, leaderboard)
-        return await self.request(path, {"limit": "100"}, cache_time=60 * 10)
+        params = {"limit": "100"}
+        if after is not None:
+            params['after'] = after
+        return await self.request(path, params, force_update=force_update)
 
-    async def leagueflow(self, user):
+    async def leagueflow(self, user, force_update: bool = False):
         path = ('labs', 'leagueflow', user)
-        return await self.request(path, cache_time=60 * 10)
+        return await self.request(path, force_update=force_update)
 
-    async def user_search(self, query):
+    async def user_search(self, query, force_update: bool = False):
         path = ('users', 'search', query)
-        return await self.request(path, cache_time=60 * 5)
+        return await self.request(path, force_update=force_update)
 
-    async def records_leaderboard(self, leaderboard: str, limit=500) -> list[dict]:
+    async def records_leaderboard(self, leaderboard: str, limit=500, force_update: bool = False) -> list[dict]:
         path = ('records', leaderboard)
         single_max = 100
         if limit > single_max:
-            return await self.request_paginate(path, {"limit": str(single_max)}, page_using='after', page_times=(limit + single_max - 1) // single_max, cache_time=60 * 10)
-        return [await self.request(path, cache_time=60 * 10, params={"limit": str(limit)})]
+            return await self.request_paginate(path, {"limit": str(single_max)}, page_using='after', page_times=(limit + single_max - 1) // single_max, force_update=force_update)
+        return [await self.request(path, params={"limit": str(limit)}, force_update=force_update)]

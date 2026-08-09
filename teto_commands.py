@@ -30,7 +30,9 @@ async def resolve_username(author_id: int) -> Optional[str]:
     else:
         return None
 
-async def handle_tetra(send_reply, send_message, author_id: int, username: Optional[str] = None, round_num: int = 1):
+past_force_update_users = {}
+
+async def handle_tetra(send_reply, send_message, author_id: int, username: Optional[str] = None, round_num: int = 1, force_update: bool = False):
     """Core logic for the tetra command. send_reply and send_message are callables."""
 
     if not username:
@@ -39,9 +41,20 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
             await send_message('No linked TETR.IO account found for your Discord ID. Please provide a username. Usage: `>tetra <username> [round]`')
             return
 
+    # Check if the person is using force_update too often - if yes, then they can go fluff themselves and learn to downstack.
+    if force_update:
+        now = datetime.now(timezone.utc)
+        last_used = past_force_update_users.get(author_id)
+        if last_used and (now - last_used).total_seconds() < 60:
+            await send_message('You are using force_update too frequently. Please only use it when absolutely necessary.\nIf you somehow finished a TL game so quickly, go learn how to downstack.')
+            # Log this
+            logger.warning(f'User {author_id} is using force_update too frequently.')
+            return
+        past_force_update_users[author_id] = now
+
     username = username.lower()
 
-    result: dict = await tetrioClient.user_leaderboard(username, "league", "recent")
+    result: dict = await tetrioClient.user_leaderboard(username, "league", "recent", force_update=force_update)
 
     if not result['success']:
         await send_reply(f"{result['error']['msg']}")
@@ -137,8 +150,29 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
     }
 
 
+class PageJumpModal(discord.ui.Modal, title="Jump to page"):
+    page_number = discord.ui.TextInput(label="Page number", max_length=4)
+
+    def __init__(self, paginator):
+        super().__init__()
+        self.paginator = paginator
+        self.page_number.placeholder = f"1-{paginator.num_pages}"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            target = int(self.page_number.value) - 1
+        except ValueError:
+            await interaction.response.send_message(
+                f"`{self.page_number.value}` is not a page number.", ephemeral=True)
+            return
+        p = self.paginator
+        p.page = max(0, min(target, p.num_pages - 1))
+        p._sync_buttons()
+        await interaction.response.edit_message(attachments=[p.render_page()], view=p)
+
+
 class TetraRecentPaginator(discord.ui.View):
-    def __init__(self, games, tz, page_size):
+    def __init__(self, games, tz, page_size, username, cursor, has_more):
         super().__init__(timeout=600)      # must stay < 15 min: on_timeout edits via the original interaction token
         self.games = games
         self.tz = tz
@@ -146,6 +180,9 @@ class TetraRecentPaginator(discord.ui.View):
         self.page_size = page_size
         self.num_pages = math.ceil(len(games) / self.page_size)
         self.message = None                # set after sending, used by on_timeout
+        self.username = username
+        self.cursor = cursor
+        self.has_more = has_more
         self._cache = {}                   # page index -> PNG bytes
         self._sync_buttons()               # must run AFTER super().__init__()
 
@@ -158,23 +195,50 @@ class TetraRecentPaginator(discord.ui.View):
             self._cache[self.page] = buf.getvalue()
         return discord.File(io.BytesIO(self._cache[self.page]), filename="tetra_recent.png")
 
-    def _sync_buttons(self):
-        self.prev_button.disabled = (self.page <= 0)
-        self.next_button.disabled = (self.page >= self.num_pages - 1)
-        self.page_label.label = f"Page {self.page + 1}/{self.num_pages}"
-
     async def _flip(self, interaction: discord.Interaction, delta: int):
-        self.page = max(0, min(self.page + delta, self.num_pages - 1))
+        target = self.page + delta
+        if delta > 0 and target >= self.num_pages and self.has_more:
+            first_unseen = len(self.games)
+            await self._fetch_older()
+            target = first_unseen // self.page_size  # land on the first page with unseen games
+        self.page = max(0, min(target, self.num_pages - 1))
         self._sync_buttons()
         await interaction.response.edit_message(attachments=[self.render_page()], view=self)
+
+    async def _fetch_older(self):
+        result = await tetrioClient.user_leaderboard(self.username, "league", "recent", after=self.cursor)
+        if not result.get('success') or not result["data"]["entries"]:
+            self.has_more = False
+            return
+        entries = result["data"]["entries"]
+        p = entries[-1]['p']
+        self.cursor = f"{p['pri']}:{p['sec']}:{p['ter']}"
+        self.has_more = len(entries) == 100
+        new_games = [g for g in (_build_recent_game(e, self.username) for e in entries) if g]
+        if new_games:
+            self._cache.pop(self.num_pages - 1, None)  # old last page may have been partial — its PNG is stale
+            self.games.extend(new_games)
+            self.num_pages = math.ceil(len(self.games) / self.page_size)
+
+    def _sync_buttons(self):
+        self.first_button.disabled = (self.page <= 0)
+        self.prev_button.disabled = (self.page <= 0)
+        self.next_button.disabled = (self.page >= self.num_pages - 1) and not self.has_more
+        self.page_label.disabled = (self.num_pages <= 1 and not self.has_more)
+        suffix = "+" if self.has_more else ""
+        self.page_label.label = f"Page {self.page + 1}/{self.num_pages}{suffix}"
+
+    @discord.ui.button(label="First", style=discord.ButtonStyle.secondary, disabled=True)
+    async def first_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._flip(interaction, -self.page)  # go to page 0
 
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, disabled=True)
     async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._flip(interaction, -1)
 
-    @discord.ui.button(label="Page 1/1", style=discord.ButtonStyle.gray, disabled=True)
+    @discord.ui.button(label="Page 1/1", style=discord.ButtonStyle.gray)
     async def page_label(self, interaction: discord.Interaction, button: discord.ui.Button):
-        pass  # permanently disabled indicator; decorator still requires a coroutine
+        await interaction.response.send_modal(PageJumpModal(self))
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -231,8 +295,12 @@ async def handle_tetra_recent(send_reply, send_message, author_id: int, username
         await send_message('No recent Tetra League games found for this user.')
         return
 
-    tetra_recent_render.render(games, "recent_output.png", tz=tzinfo)
-    paginator = TetraRecentPaginator(games, tzinfo, page_size=page_size)
+    # tetra_recent_render.render(games, "recent_output.png", tz=tzinfo)
+    p = entries[-1]['p']
+    cursor = f"{p['pri']}:{p['sec']}:{p['ter']}"
+    paginator = TetraRecentPaginator(games, tzinfo, page_size=page_size,
+                                     username=username, cursor=cursor,
+                                     has_more=len(entries) == TETRA_RECENT_MAX)
     if paginator.num_pages > 1:
         paginator.message = await send_reply(file=paginator.render_page(), view=paginator)
     else:

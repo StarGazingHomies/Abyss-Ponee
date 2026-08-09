@@ -60,7 +60,7 @@ async def help_command(interaction: discord.Interaction, command: Optional[Liter
     elif command == 'tetra':
         await interaction.response.send_message("/tetra [username] [game_number]\nView past Tetra League games.\nIf username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent).")
     elif command == 'tetra_recent':
-        await interaction.response.send_message("/tetra_recent [username] [count] [timezone]\nView a condensed list of recent Tetra League games.\nIf username is omitted, uses your linked account.\nCount specifies how many recent games to show (1-30, default 10).\nTimezone sets the game times: an IANA name (e.g. America/New_York) or a UTC offset (e.g. UTC-4). Defaults to UTC.")
+        await interaction.response.send_message("/tetra_recent [username] [page_size] [timezone]\nView a condensed list of recent Tetra League games.\nIf username is omitted, uses your linked account.\nPage_size specifies how many recent games to show per page (1-30, default 10).\nTimezone sets the game times: an IANA name (e.g. America/New_York) or a UTC offset (e.g. UTC-4). Defaults to UTC.")
     elif command == 'qp':
         await interaction.response.send_message("/qp [username] [game_number] [expert] [sort_by]\nView past Quick Play games. If username is omitted, uses your linked account.\nGame number specifies which recent game to display (1 is most recent or highest).\nExpert mode shows only expert games. Sort by can be 'recent' or 'altitude'.\nPersonal rank is capped at 100, country and global ranks at 500.")
     elif command == 'leagueflow':
@@ -76,9 +76,10 @@ async def help_command(interaction: discord.Interaction, command: Optional[Liter
 @app_commands.describe(
     username="TETR.IO username (defaults to your linked account)",
     game_number="Which recent game to display (1-100, default 1)",
+    force_update="USE WITH CAUTION: Force update of cached data (default false)"
 )
-async def tetra_command(interaction: discord.Interaction, username: Optional[str] = None, game_number: Optional[int] = None):
-    log_command(interaction, 'tetra', username=username, game_number=game_number)
+async def tetra_command(interaction: discord.Interaction, username: Optional[str] = None, game_number: Optional[int] = None, force_update: bool = False):
+    log_command(interaction, 'tetra', username=username, game_number=game_number, force_update=force_update)
     await interaction.response.defer()
     try:
         await handle_tetra(
@@ -87,6 +88,7 @@ async def tetra_command(interaction: discord.Interaction, username: Optional[str
             author_id=interaction.user.id,
             username=username,
             round_num=game_number or 1,
+            force_update=force_update
         )
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
@@ -112,6 +114,7 @@ async def tetra_recent_command(interaction: discord.Interaction, username: Optio
             author_id=interaction.user.id,
             username=username,
             tz=timezone,
+            page_size=page_size or 10
         )
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
