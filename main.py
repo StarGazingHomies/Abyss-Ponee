@@ -9,8 +9,10 @@ from teto_commands import handle_tetra_recent
 from teto_commands import handle_leagueflow
 from teto_commands import handle_quickplay
 from teto_commands import handle_changelog
+from teto_commands import handle_tetoranks
 from pony_commands import manebooruClient
 from pony_commands import handle_image
+from feature_requests import append_request, read_requests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +55,7 @@ if not token or not bot_owner or not headers:
 @app_commands.describe(
     command="Optional specific command to get help for (tetra, qp, leagueflow, image)"
 )
-async def help_command(interaction: discord.Interaction, command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog']] = None):
+async def help_command(interaction: discord.Interaction,     command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog', 'tetoranks', 'request_feature']] = None):
     if command is None:
         description = "<:thinklight:905641655741329418>\n"
         description += "Miscellaneous teto bot by Pony (on Tetr.io)"
@@ -70,6 +72,10 @@ async def help_command(interaction: discord.Interaction, command: Optional[Liter
         await interaction.response.send_message("/image <tags> [sort] [direction] [result]\nSearch Manebooru for an image using the safe filter.\nTags are comma-separated (e.g. 'twilight sparkle, solo').\nSort can be score (top rated), first_seen_at (newest), or random.\nDirection is desc or asc. Result picks which match to show (1-50, default 1).")
     elif command == 'changelog':
         await interaction.response.send_message("/changelog\nView past changes to the bot, newest first, 5 versions per page.")
+    elif command == 'tetoranks':
+        await interaction.response.send_message("/tetoranks [verbose]\nShow TETRA LEAGUE rank TR thresholds, player counts, and average stats.\nVerbose also shows position, target TR and how deflated/inflated each rank is.")
+    elif command == 'request_feature':
+        await interaction.response.send_message("/request_feature [request]\nSuggest a feature for the bot (once per day).\nIf run by the bot owner with no request, shows all pending requests.")
 
 
 @tree.command(
@@ -87,6 +93,27 @@ async def changelog_command(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /changelog command: {e}', exc_info=True)
+
+
+@tree.command(
+    name="tetoranks",
+    description="Show TETRA LEAGUE rank TR thresholds and stats",
+)
+@app_commands.describe(
+    verbose="Also show position, target TR and rank deflation/inflation (default false)"
+)
+async def tetoranks_command(interaction: discord.Interaction, verbose: bool = False):
+    log_command(interaction, 'tetoranks', verbose=verbose)
+    await interaction.response.defer()
+    try:
+        await handle_tetoranks(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            verbose=verbose,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
+        logger.error(f'Error in /tetoranks command: {e}', exc_info=True)
 
 
 @tree.command(
@@ -229,6 +256,58 @@ async def image_command(interaction: discord.Interaction, tags: str,
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /image command: {e}', exc_info=True)
+
+
+def request_cooldown(interaction: discord.Interaction):
+    if interaction.user.id == bot_owner:
+        return None
+    return app_commands.Cooldown(1, 86400)
+
+
+@tree.command(
+    name="request-feature",
+    description="Request a feature for the bot",
+)
+@app_commands.describe(
+    request="Describe the feature you want",
+)
+@app_commands.checks.dynamic_cooldown(request_cooldown)
+async def request_feature_command(interaction: discord.Interaction, request: Optional[str] = None):
+    log_command(interaction, 'request-feature', request=request)
+
+    if interaction.user.id == bot_owner:
+        await interaction.response.defer()
+        content = read_requests().strip()
+        if not content:
+            await interaction.followup.send('No feature requests yet.')
+            return
+        for i in range(0, len(content), 2000):
+            await interaction.followup.send(content[i:i + 2000])
+        return
+
+    if not request or not request.strip():
+        await interaction.response.send_message(
+            'Please describe the feature you would like. Usage: `/request-feature <your request>`',
+            ephemeral=True,
+        )
+        return
+
+    append_request(interaction.user.id, str(interaction.user), request.strip())
+    await interaction.response.send_message('Thanks! Your request has been recorded.', ephemeral=True)
+
+
+@request_feature_command.error
+async def on_request_feature_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        retry = int(error.retry_after)
+        hours, rem = divmod(retry, 3600)
+        minutes, seconds = divmod(rem, 60)
+        await interaction.response.send_message(
+            f'You can request another feature in {hours}h {minutes}m {seconds}s.',
+            ephemeral=True,
+        )
+    else:
+        raise error
 
 
 @client.event

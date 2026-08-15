@@ -79,6 +79,10 @@ class TetraLeagueAPI(CachedAPIClient):
         path = ('labs', 'leagueflow', user)
         return await self.request(path, force_update=force_update)
 
+    async def league_ranks(self, force_update: bool = False):
+        path = ('labs', 'league_ranks')
+        return await self.request(path, force_update=force_update)
+
     async def user_search(self, query, force_update: bool = False):
         path = ('users', 'search', query)
         return await self.request(path, force_update=force_update)

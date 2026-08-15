@@ -4,3 +4,7 @@ config.json
 *.png
 *.jpg
 *.log
+feature_requests.txt
+.idea/
+.venv/
+__pycache__/

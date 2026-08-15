@@ -17,6 +17,7 @@ from render import tetra as tetra_render
 from render import tetra_recent as tetra_recent_render
 from render import leagueflow as leagueflow_render
 from render import quickplay as quickplay_render
+from render import tetoranks as tetoranks_render
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
@@ -399,6 +400,25 @@ async def handle_tetra_recent(send_reply, send_message, author_id: int, username
         paginator.message = await send_reply(file=paginator.render_page(), view=paginator)
     else:
         await send_reply(file=paginator.render_page())   # single page: footer, no buttons
+
+
+async def handle_tetoranks(send_reply, send_message, verbose: bool = False):
+    """Core logic for the tetoranks command. send_reply and send_message are callables."""
+
+    result: dict = await tetrioClient.league_ranks()
+
+    if not result['success']:
+        await send_reply(f"{result['error']['msg']}")
+        return
+
+    total, ranks = tetoranks_render.parse(result['data']['data'])
+
+    if not ranks:
+        await send_message('No rank data available right now.')
+        return
+
+    tetoranks_render.render(ranks, "tetoranks.png", total=total, verbose=verbose)
+    await send_reply(file=discord.File("tetoranks.png"))
 
 
 async def handle_tetra_message(message: discord.Message):
