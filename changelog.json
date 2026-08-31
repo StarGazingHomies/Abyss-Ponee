@@ -1,5 +1,12 @@
 [
     {
+        "version": "v0.0.8",
+        "date": "2026-08-31",
+        "changes": [
+            "Rank change now displays in /tetra_recent"
+        ]
+    },
+    {
         "version": "v0.0.7",
         "date": "2026-08-14",
         "changes": [

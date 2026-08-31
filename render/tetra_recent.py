@@ -62,14 +62,14 @@ TR_FADE       = (0.624, 0.816, 0.580)   # muted decimal + "TR" suffix (160,208,1
 
 # ── Layout (base units == reference pixels; multiplied by SCALE) ───────────────
 SCALE       = 2
-W           = 1105            # trailing margin past the TR value (VIEW button removed)
+W           = 1134            # trailing margin holds the rank-change icon slot (VIEW button removed)
 ROW_H       = 35
 ROW_GAP     = 4
 TOP         = 9
 BOTTOM      = 6
 
 PANEL_L     = 4
-PANEL_R     = 1101
+PANEL_R     = 1130
 PANEL_RAD   = 4
 
 BADGE_L       = 5
@@ -101,6 +101,9 @@ TR_RIGHT    = 1085
 TR_SIZE     = 17
 TR_DEC      = 11
 TR_SUFFIX   = 14
+
+RANK_GAP    = 7               # gap between the TR value and the rank-change icon
+RANK_BOX    = 22              # square box the rank icon is fit into
 
 FONT_FACE = "HUN"
 
@@ -291,6 +294,8 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
         apm, pps, vs   float     queried player's stats for the game
         ts        str            ISO timestamp
         tr_change float | None   TR delta for the queried player
+        new_rank  str | None     rank key ('x+', 's', ...) if the game changed
+                                 the queried player's rank, else None
 
     The result pennant is coloured by *outcome*: orange for a win, blue for a
     loss, dark green for a no contest.
@@ -386,6 +391,12 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
         # ── TR change ───────────────────────────────────────────────────
         _draw_tr(ctx, g.get('tr_change'), base_y)
 
+        # ── Rank change icon (new rank, shown right of the TR value) ────
+        if g.get('new_rank'):
+            icon = _load_surface(ASSETS_DIR / "ranks" / f"{g['new_rank'].lower()}.png", RANK_BOX)
+            if icon:
+                _paint_surface(ctx, icon, TR_RIGHT + RANK_GAP, cy)
+
     if summary:
         stats = _compute_summary(games)
         y = TOP + n * (ROW_H + ROW_GAP)
@@ -441,8 +452,11 @@ if __name__ == "__main__":
             outcome = 'nocontest'
         league = entry['extras'].get('league', {}).get(me['id'])
         tr_change = None
+        new_rank = None
         if league and league[0].get('tr') is not None and league[1].get('tr') is not None:
             tr_change = league[1]['tr'] - league[0]['tr']
+        if league and league[1].get('rank') and league[0].get('rank') != league[1].get('rank'):
+            new_rank = league[1]['rank']
         st = me['stats']
         return {
             'outcome': outcome,
@@ -454,6 +468,7 @@ if __name__ == "__main__":
             'apm': st['apm'], 'pps': st['pps'], 'vs': st['vsscore'],
             'ts': entry['ts'],
             'tr_change': tr_change,
+            'new_rank': new_rank,
         }
 
     games = [build(e) for e in data['data']['entries'][:args.count]]

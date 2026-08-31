@@ -132,9 +132,13 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
         outcome = "nocontest"
 
     tr_change = None
+    new_rank = None
     league = entry["extras"].get("league", {}).get(me["id"])
-    if league and len(league) >= 2 and league[0].get("tr") is not None and league[1].get("tr") is not None:
-        tr_change = league[1]["tr"] - league[0]["tr"]
+    if league and len(league) >= 2:
+        if league[0].get("tr") is not None and league[1].get("tr") is not None:
+            tr_change = league[1]["tr"] - league[0]["tr"]
+        if league[1].get("rank") and league[0].get("rank") != league[1].get("rank"):
+            new_rank = league[1]["rank"]
 
     stats = me["stats"]
     return {
@@ -149,6 +153,7 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
         "vs": stats["vsscore"],
         "ts": entry["ts"],
         "tr_change": tr_change,
+        "new_rank": new_rank,
     }
 
 
