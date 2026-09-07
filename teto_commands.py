@@ -18,6 +18,7 @@ from render import tetra_recent as tetra_recent_render
 from render import leagueflow as leagueflow_render
 from render import quickplay as quickplay_render
 from render import tetoranks as tetoranks_render
+from render import leaderboard as leaderboard_render
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
@@ -56,6 +57,9 @@ async def handle_tetra(send_reply, send_message, author_id: int, username: Optio
 
     username = username.lower()
 
+    # Force update doesn't actually do anything if I keep the same X-Session-ID lol
+    # So like ima just not do it
+    force_update = False
     result: dict = await tetrioClient.user_leaderboard(username, "league", "recent", force_update=force_update)
 
     if not result['success']:
@@ -157,6 +161,12 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
     }
 
 
+def _prisecter(entry: dict) -> str:
+    """Pagination cursor for the entry after *entry*."""
+    p = entry['p']
+    return f"{p['pri']}:{p['sec']}:{p['ter']}"
+
+
 class PageJumpModal(discord.ui.Modal, title="Jump to page"):
     page_number = discord.ui.TextInput(label="Page number", max_length=4)
 
@@ -178,29 +188,35 @@ class PageJumpModal(discord.ui.Modal, title="Jump to page"):
         await interaction.response.edit_message(**p.page_kwargs(), view=p)
 
 
-class TetraRecentPaginator(discord.ui.View):
-    def __init__(self, games, tz, page_size, username, cursor, has_more):
+class ImagePaginator(discord.ui.View):
+    """First/Previous/Page/Next buttons over a PNG rendered from a growing list
+    of rows. Subclasses implement :meth:`_render_rows` and, if the source can
+    be extended past what was initially fetched, :meth:`_fetch_more`."""
+    filename = "page.png"
+
+    def __init__(self, rows, page_size, has_more=False):
         super().__init__(timeout=600)      # must stay < 15 min: on_timeout edits via the original interaction token
-        self.games = games
-        self.tz = tz
+        self.rows = rows
         self.page = 0
         self.page_size = page_size
-        self.num_pages = math.ceil(len(games) / self.page_size)
+        self.num_pages = math.ceil(len(rows) / self.page_size)
         self.message = None                # set after sending, used by on_timeout
-        self.username = username
-        self.cursor = cursor
         self.has_more = has_more
         self._cache = {}                   # page index -> PNG bytes
         self._sync_buttons()               # must run AFTER super().__init__()
 
+    def _render_rows(self, rows) -> bytes:
+        raise NotImplementedError
+
+    async def _fetch_more(self) -> list:
+        """Fetch the next batch of rows, update self.has_more, return the new rows."""
+        return []
+
     def render_page(self) -> discord.File:
         if self.page not in self._cache:
             start = self.page * self.page_size
-            buf = io.BytesIO()
-            tetra_recent_render.render(self.games[start:start + self.page_size],
-                                       buf, tz=self.tz, summary=True)
-            self._cache[self.page] = buf.getvalue()
-        return discord.File(io.BytesIO(self._cache[self.page]), filename="tetra_recent.png")
+            self._cache[self.page] = self._render_rows(self.rows[start:start + self.page_size])
+        return discord.File(io.BytesIO(self._cache[self.page]), filename=self.filename)
 
     def page_kwargs(self):
         """Edit-message kwargs for the current page (shared with PageJumpModal)."""
@@ -209,27 +225,19 @@ class TetraRecentPaginator(discord.ui.View):
     async def _flip(self, interaction: discord.Interaction, delta: int):
         target = self.page + delta
         if delta > 0 and target >= self.num_pages and self.has_more:
-            first_unseen = len(self.games)
-            await self._fetch_older()
-            target = first_unseen // self.page_size  # land on the first page with unseen games
+            first_unseen = len(self.rows)
+            await self._extend()
+            target = first_unseen // self.page_size  # land on the first page with unseen rows
         self.page = max(0, min(target, self.num_pages - 1))
         self._sync_buttons()
-        await interaction.response.edit_message(attachments=[self.render_page()], view=self)
+        await interaction.response.edit_message(**self.page_kwargs(), view=self)
 
-    async def _fetch_older(self):
-        result = await tetrioClient.user_leaderboard(self.username, "league", "recent", after=self.cursor)
-        if not result.get('success') or not result["data"]["entries"]:
-            self.has_more = False
-            return
-        entries = result["data"]["entries"]
-        p = entries[-1]['p']
-        self.cursor = f"{p['pri']}:{p['sec']}:{p['ter']}"
-        self.has_more = len(entries) == 100
-        new_games = [g for g in (_build_recent_game(e, self.username) for e in entries) if g]
-        if new_games:
-            self._cache.pop(self.num_pages - 1, None)  # old last page may have been partial — its PNG is stale
-            self.games.extend(new_games)
-            self.num_pages = math.ceil(len(self.games) / self.page_size)
+    async def _extend(self):
+        new_rows = await self._fetch_more()
+        if new_rows:
+            self._cache.pop(self.num_pages - 1, None)  # old last page may have been partial: its PNG is stale
+            self.rows.extend(new_rows)
+            self.num_pages = math.ceil(len(self.rows) / self.page_size)
 
     def _sync_buttons(self):
         self.first_button.disabled = (self.page <= 0)
@@ -263,6 +271,35 @@ class TetraRecentPaginator(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass  # message deleted or token expired
+
+
+class TetraRecentPaginator(ImagePaginator):
+    filename = "tetra_recent.png"
+
+    def __init__(self, games, tz, page_size, username, cursor, has_more):
+        self.tz = tz
+        self.username = username
+        self.cursor = cursor
+        super().__init__(games, page_size, has_more)
+
+    @property
+    def games(self):
+        return self.rows
+
+    def _render_rows(self, rows) -> bytes:
+        buf = io.BytesIO()
+        tetra_recent_render.render(rows, buf, tz=self.tz, summary=True)
+        return buf.getvalue()
+
+    async def _fetch_more(self) -> list:
+        result = await tetrioClient.user_leaderboard(self.username, "league", "recent", after=self.cursor)
+        if not result.get('success') or not result["data"]["entries"]:
+            self.has_more = False
+            return []
+        entries = result["data"]["entries"]
+        self.cursor = _prisecter(entries[-1])
+        self.has_more = len(entries) == 100
+        return [g for g in (_build_recent_game(e, self.username) for e in entries) if g]
 
 
 CHANGELOG_PATH = pathlib.Path(__file__).parent / 'changelog.json'
@@ -396,8 +433,7 @@ async def handle_tetra_recent(send_reply, send_message, author_id: int, username
         return
 
     # tetra_recent_render.render(games, "recent_output.png", tz=tzinfo)
-    p = entries[-1]['p']
-    cursor = f"{p['pri']}:{p['sec']}:{p['ter']}"
+    cursor = _prisecter(entries[-1])
     paginator = TetraRecentPaginator(games, tzinfo, page_size=page_size,
                                      username=username, cursor=cursor,
                                      has_more=len(entries) == TETRA_RECENT_MAX)
@@ -623,3 +659,159 @@ async def handle_quickplay(send_reply, send_message, author_id: int, username: O
 
     quickplay_render.render_quickplay(entry, "qp_output.png")
     await send_reply(file=discord.File("qp_output.png"))
+
+
+# ── /tetolb ────────────────────────────────────────────────────────────────────
+
+LB_BOARDS = tetrio.USER_BOARDS + tetrio.RECORD_BOARDS
+LB_PAGE_SIZE_DEFAULT = 10
+LB_PAGE_SIZE_MAX = 25
+LB_START_RANK_MAX = 1000       # seeding deeper than this means too many sequential API calls
+LB_FETCH_SIZE = 100
+
+
+def _xp_level(xp: float) -> int:
+    """TETR.IO's XP -> level curve (verified against tetrio.team2xh.net/levels.txt)."""
+    return math.floor((xp / 500) ** 0.6 + xp / (5000 + max(0, xp - 4e6) / 5000) + 1)
+
+
+def _finesse(stats: dict):
+    """(faults, accuracy %) for a singleplayer record, or None if unavailable."""
+    fin = stats.get('finesse') or {}
+    pieces = stats.get('piecesplaced')
+    faults, perfect = fin.get('faults'), fin.get('perfectpieces')
+    if faults is None or perfect is None or not pieces:
+        return None
+    return faults, perfect / pieces * 100
+
+
+def _ratio(a, b):
+    return a / b if a is not None and b else None
+
+
+def _build_lb_row(board: str, entry: dict, rank: int) -> dict:
+    """Flatten one leaderboard entry into the fields the renderer needs."""
+    if board in tetrio.USER_BOARDS:
+        league = entry.get('league') or {}
+        row = {
+            'rank': rank,
+            'username': entry['username'],
+            'country': entry.get('country'),
+            'supporter': entry.get('supporter', False),
+            'league_rank': league.get('rank'),
+        }
+        if board == 'league':
+            row.update(tr=league.get('tr'), glicko=league.get('glicko'), rd=league.get('rd'),
+                       apm=league.get('apm'), pps=league.get('pps'), vs=league.get('vs'),
+                       games=league.get('gamesplayed'), wins=league.get('gameswon'))
+        elif board == 'xp':
+            xp = entry.get('xp') or 0
+            games, gametime = entry.get('gamesplayed'), entry.get('gametime')
+            row.update(xp=xp, level=_xp_level(xp),
+                       games=games if games is not None and games >= 0 else None,
+                       hours=(gametime / 3600) if gametime is not None and gametime >= 0 else None)
+        else:  # ar
+            counts = entry.get('ar_counts') or {}
+            row['ar'] = entry.get('ar')
+            for key in ('1', '2', '3', '4', '5', 't100', 't50', 't25', 't10', 't5', 't3'):
+                row[f'ar_{key}'] = counts.get(key, 0)
+        return row
+
+    user = entry['user']
+    results = entry['results']
+    stats = results.get('stats') or {}
+    agg = results.get('aggregatestats') or {}
+    row = {
+        'rank': rank,
+        'username': user['username'],
+        'country': user.get('country'),
+        'supporter': user.get('supporter', False),
+        'ts': entry.get('ts'),
+    }
+    if board == '40l':
+        pieces, inputs, ms = stats.get('piecesplaced'), stats.get('inputs'), stats.get('finaltime')
+        row.update(time=ms, pps=agg.get('pps'), pieces=pieces, finesse=_finesse(stats),
+                   kpp=_ratio(inputs, pieces), kps=_ratio(inputs, ms / 1000 if ms else None))
+    elif board == 'blitz':
+        pieces, score = stats.get('piecesplaced'), stats.get('score')
+        row.update(score=score, level=stats.get('level'), pps=agg.get('pps'), pieces=pieces,
+                   finesse=_finesse(stats), spp=_ratio(score, pieces))
+    else:  # zenith / zenithex
+        z = stats.get('zenith') or {}
+        row.update(altitude=z.get('altitude'), floor=z.get('floor'), time=stats.get('finaltime'),
+                   apm=agg.get('apm'), pps=agg.get('pps'), vs=agg.get('vsscore'),
+                   mods=((entry.get('extras') or {}).get('zenith') or {}).get('mods') or [])
+    return row
+
+
+class LeaderboardPaginator(ImagePaginator):
+    filename = "tetolb.png"
+
+    def __init__(self, rows, board, country, page_size, cursor, has_more):
+        self.board = board
+        self.country = country
+        self.cursor = cursor
+        super().__init__(rows, page_size, has_more)
+
+    def _render_rows(self, rows) -> bytes:
+        buf = io.BytesIO()
+        leaderboard_render.render(rows, buf, board=self.board, country=self.country)
+        return buf.getvalue()
+
+    async def _fetch_more(self) -> list:
+        result = await tetrioClient.leaderboard_page(self.board, self.country, after=self.cursor,
+                                                     limit=LB_FETCH_SIZE)
+        entries = (result.get('data') or {}).get('entries') if result.get('success') else None
+        if not entries:
+            self.has_more = False
+            return []
+        self.cursor = _prisecter(entries[-1])
+        self.has_more = len(entries) == LB_FETCH_SIZE
+        base = len(self.rows)
+        return [_build_lb_row(self.board, e, base + i + 1) for i, e in enumerate(entries)]
+
+
+async def handle_tetolb(send_reply, send_message, board: str = 'league', country: Optional[str] = None,
+                        page_size: Optional[int] = None, start_rank: Optional[int] = None):
+    """Core logic for the tetolb command. send_reply and send_message are callables."""
+    board = (board or 'league').lower()
+    if board not in LB_BOARDS:
+        await send_message(f'Unknown leaderboard `{board}`. Choose one of: {", ".join(LB_BOARDS)}.')
+        return
+
+    if country:
+        country = country.strip().upper()
+        if len(country) != 2 or not country.isalpha():
+            await send_message(f'Invalid country `{country}`. Use a two-letter ISO code (e.g. `US`).')
+            return
+
+    page_size = max(1, min(page_size or LB_PAGE_SIZE_DEFAULT, LB_PAGE_SIZE_MAX))
+    start_rank = max(1, min(start_rank or 1, LB_START_RANK_MAX))
+
+    # Seed enough pages to reach start_rank (there is no rank -> cursor lookup).
+    rows, cursor, has_more = [], None, True
+    while has_more and len(rows) < start_rank:
+        result = await tetrioClient.leaderboard_page(board, country, after=cursor, limit=LB_FETCH_SIZE)
+        if not result.get('success'):
+            await send_reply(f"{result.get('error', {}).get('msg', 'Unknown error')}")
+            return
+        entries = result['data']['entries']
+        if not entries:
+            has_more = False
+            break
+        base = len(rows)
+        rows.extend(_build_lb_row(board, e, base + i + 1) for i, e in enumerate(entries))
+        cursor = _prisecter(entries[-1])
+        has_more = len(entries) == LB_FETCH_SIZE
+
+    if not rows:
+        await send_message('No entries found on this leaderboard.')
+        return
+
+    paginator = LeaderboardPaginator(rows, board, country, page_size, cursor, has_more)
+    paginator.page = min((start_rank - 1) // page_size, paginator.num_pages - 1)
+    paginator._sync_buttons()
+    if paginator.num_pages > 1 or paginator.has_more:
+        paginator.message = await send_reply(file=paginator.render_page(), view=paginator)
+    else:
+        await send_reply(file=paginator.render_page())   # single page: no buttons

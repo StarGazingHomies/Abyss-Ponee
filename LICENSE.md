@@ -1,3 +1,3 @@
 This software is source available.
 
-All rights reserved.
+All rights reserved for the code portion of this software.

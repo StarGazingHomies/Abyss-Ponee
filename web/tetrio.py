@@ -6,6 +6,9 @@ from web._client import CachedAPIClient
 
 logger = logging.getLogger(__name__)
 
+USER_BOARDS = ('league', 'xp', 'ar')
+RECORD_BOARDS = ('40l', 'blitz', 'zenith', 'zenithex')
+
 
 class TetraLeagueAPI(CachedAPIClient):
     base_url = 'https://ch.tetr.io/api/'
@@ -93,3 +96,23 @@ class TetraLeagueAPI(CachedAPIClient):
         if limit > single_max:
             return await self.request_paginate(path, {"limit": str(single_max)}, page_using='after', page_times=(limit + single_max - 1) // single_max, force_update=force_update)
         return [await self.request(path, params={"limit": str(limit)}, force_update=force_update)]
+
+    async def leaderboard_page(self, board: str, country: str = None, after: str = None,
+                               limit: int = 100, force_update: bool = False) -> dict:
+        """One page (<= 100 entries) of a global or per-country leaderboard.
+
+        *board* is one of USER_BOARDS (``/users/by/…``) or RECORD_BOARDS
+        (``/records/{board}_{scope}``). *after* is a prisecter cursor."""
+        params = {"limit": str(max(1, min(limit, 100)))}
+        if board in USER_BOARDS:
+            path = ('users', 'by', board)
+            if country:
+                params['country'] = country.upper()
+        elif board in RECORD_BOARDS:
+            scope = f"country_{country.upper()}" if country else "global"
+            path = ('records', f"{board}_{scope}")
+        else:
+            raise ValueError('Invalid leaderboard')
+        if after is not None:
+            params['after'] = after
+        return await self.request(path, params, force_update=force_update)

@@ -10,6 +10,7 @@ from teto_commands import handle_leagueflow
 from teto_commands import handle_quickplay
 from teto_commands import handle_changelog
 from teto_commands import handle_tetoranks
+from teto_commands import handle_tetolb
 from pony_commands import manebooruClient
 from pony_commands import handle_image
 from feature_requests import append_request, read_requests
@@ -55,7 +56,7 @@ if not token or not bot_owner or not headers:
 @app_commands.describe(
     command="Optional specific command to get help for (tetra, qp, leagueflow, image)"
 )
-async def help_command(interaction: discord.Interaction,     command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog', 'tetoranks', 'request_feature']] = None):
+async def help_command(interaction: discord.Interaction,     command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog', 'tetoranks', 'tetolb', 'request_feature']] = None):
     if command is None:
         description = "<:thinklight:905641655741329418>\n"
         description += "Miscellaneous teto bot by Pony (on Tetr.io)"
@@ -74,6 +75,8 @@ async def help_command(interaction: discord.Interaction,     command: Optional[L
         await interaction.response.send_message("/changelog\nView past changes to the bot, newest first, 5 versions per page.")
     elif command == 'tetoranks':
         await interaction.response.send_message("/tetoranks [verbose]\nShow TETRA LEAGUE rank TR thresholds, player counts, and average stats.\nVerbose also shows position, target TR and how deflated/inflated each rank is.")
+    elif command == 'tetolb':
+        await interaction.response.send_message("/tetolb [board] [country] [page_size] [start_rank]\nBrowse a TETR.IO leaderboard.\nBoard is one of league (default), xp, ar, 40l, blitz, zenith, zenithex.\nCountry filters to a two-letter ISO code (e.g. US); omit for global.\nPage_size sets rows per page (1-25, default 10). Start_rank opens on the page containing that rank (max 1000).")
     elif command == 'request_feature':
         await interaction.response.send_message("/request_feature [request]\nSuggest a feature for the bot (once per day).\nIf run by the bot owner with no request, shows all pending requests.")
 
@@ -166,6 +169,36 @@ async def tetra_recent_command(interaction: discord.Interaction, username: Optio
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /tetra_recent command: {e}', exc_info=True)
+
+
+@tree.command(
+    name="tetolb",
+    description="Browse a TETR.IO leaderboard",
+)
+@app_commands.describe(
+    board="Which leaderboard (default: league)",
+    country="Two-letter country code (e.g. CA). Omit for global",
+    page_size="Rows per page (1-25, default 10)",
+    start_rank="Open on the page containing this rank (max 1000)",
+)
+async def tetolb_command(interaction: discord.Interaction,
+                         board: Optional[Literal['league', 'xp', 'ar', '40l', 'blitz', 'zenith', 'zenithex']] = 'league',
+                         country: Optional[str] = None, page_size: Optional[int] = None,
+                         start_rank: Optional[int] = None):
+    log_command(interaction, 'tetolb', board=board, country=country, page_size=page_size, start_rank=start_rank)
+    await interaction.response.defer()
+    try:
+        await handle_tetolb(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            board=board,
+            country=country,
+            page_size=page_size,
+            start_rank=start_rank,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
+        logger.error(f'Error in /tetolb command: {e}', exc_info=True)
 
 
 @tree.command(

@@ -1,5 +1,12 @@
 [
     {
+        "version": "v0.0.9",
+        "date": "2026-09-07",
+        "changes": [
+            "Added /tetolb"
+        ]
+    },
+    {
         "version": "v0.0.8",
         "date": "2026-08-31",
         "changes": [
