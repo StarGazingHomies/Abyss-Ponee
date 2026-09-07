@@ -2,36 +2,17 @@
 
 Rows are plain dicts produced by ``teto_commands._build_lb_row``; the set of
 columns drawn depends on *board* (see :data:`COLUMNS`)."""
-import math
-import pathlib
-from datetime import datetime
-
 import cairo
-import numpy as np
-from PIL import Image
 
-BG           = (0.059, 0.086, 0.051)
-PANEL        = (0.086, 0.129, 0.075)
-USERNAME     = (0.976, 0.980, 0.961)
-STAT         = (0.612, 0.792, 0.584)
-LABEL        = (0.361, 0.518, 0.337)
-TR_INT       = (0.886, 0.988, 0.871)
+from .common import (ASSETS_DIR, BG, FLAGS_DIR, LABEL, PANEL_L, RANKS_DIR, ROW_GAP, ROW_H,
+                     SCALE, STAT, STAT_DEC, STAT_SIZE, SUB_DY, TOP, BOTTOM, TR_INT, USERNAME,
+                     _baseline, _draw_panel, _draw_parts, _draw_text, _draw_value,
+                     _format_date, _format_time, _icon, _paint_icon, _set_rgb, _split_decimal,
+                     options)
 
-ASSETS_DIR = pathlib.Path(__file__).parent.parent / "assets"
-RANKS_DIR = ASSETS_DIR / "ranks"
-FLAGS_DIR = ASSETS_DIR / "flags"
 MODS_DIR = ASSETS_DIR / "zenith_mods"
 
-# ── Layout (base units == reference pixels; multiplied by SCALE) ─────────────
-SCALE = 2
-ROW_H = 35
-ROW_GAP = 4
-TOP = 9
-BOTTOM = 6
-
-PANEL_L = 4
-PANEL_RAD = 4
-
+# ── Layout specific to this board (see render.common for the shared metrics) ──
 TITLE_H = 26
 TITLE_GAP = 2
 HEADER_H = 22
@@ -40,9 +21,6 @@ HEADER_GAP = 4
 TITLE_SIZE = 18
 HEADER_SIZE = 14
 NAME_SIZE = 17
-STAT_SIZE = 17
-STAT_DEC = 11
-SUB_DY = 0                    # decimal part shares the integer baseline
 
 BADGE_BOX = 24
 FLAG_BOX = 24
@@ -51,11 +29,6 @@ MOD_BOX = 22
 ICON_GAP = 6
 NAME_PAD = 6                  # left padding inside the name column
 RANK_PAD = 8                  # right padding inside the rank column
-
-FONT_FACE = "HUN"
-
-options = cairo.FontOptions()
-options.set_antialias(cairo.ANTIALIAS_GRAY)
 
 BOARD_TITLES = {
     'league':   'TETRA LEAGUE',
@@ -113,133 +86,6 @@ COLUMNS = {
                ('mods', 'MODS', 130, 'mods'), _DATE],
 }
 COLUMNS['zenithex'] = COLUMNS['zenith']
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _set_rgb(ctx, col, alpha=1.0):
-    ctx.set_source_rgba(*col, alpha)
-
-
-def _rounded_rect(ctx, x, y, w, h, r):
-    ctx.new_sub_path()
-    ctx.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
-    ctx.arc(x + w - r, y + r, r, 1.5 * math.pi, 2 * math.pi)
-    ctx.arc(x + w - r, y + h - r, r, 0, 0.5 * math.pi)
-    ctx.arc(x + r, y + h - r, r, 0.5 * math.pi, math.pi)
-    ctx.close_path()
-
-
-def _font(ctx, size, bold=False, face=FONT_FACE):
-    ctx.select_font_face(face,
-                         cairo.FONT_SLANT_NORMAL,
-                         cairo.FONT_WEIGHT_BOLD if bold else cairo.FONT_WEIGHT_NORMAL)
-    ctx.set_font_size(size)
-
-
-def _draw_text(ctx, text, x, y, size, bold=False, colour=USERNAME, align="left"):
-    _font(ctx, size, bold)
-    ext = ctx.text_extents(text)
-    if align == "right":
-        x -= ext.x_advance
-    elif align == "center":
-        x -= ext.x_advance / 2
-    _set_rgb(ctx, colour)
-    ctx.move_to(x, y)
-    ctx.show_text(text)
-    return ext.x_advance
-
-
-def _draw_parts(ctx, parts, x, y, colour, align="center"):
-    """Draw a sequence of (text, size, bold, dy[, colour]) chunks laid out
-    left-to-right on a shared baseline."""
-    total = 0.0
-    for part in parts:
-        _font(ctx, part[1], part[2])
-        total += ctx.text_extents(part[0]).x_advance
-    if align == "right":
-        cx = x - total
-    elif align == "center":
-        cx = x - total / 2
-    else:
-        cx = x
-    for part in parts:
-        text, size, bold, dy = part[0], part[1], part[2], part[3]
-        _font(ctx, size, bold)
-        _set_rgb(ctx, part[4] if len(part) > 4 else colour)
-        ctx.move_to(cx, y + dy)
-        ctx.show_text(text)
-        cx += ctx.text_extents(text).x_advance
-
-
-def _split_decimal(value, group=False, places=2):
-    s = f"{value:,.{places}f}" if group else f"{value:.{places}f}"
-    dot = s.find('.')
-    return s[:dot], s[dot:]
-
-
-def _load_surface(path, box):
-    """Load a PNG and fit it into a *box* x *box* square, returning
-    (cairo surface, draw_w, draw_h). Returns None if the file is missing."""
-    p = pathlib.Path(path)
-    if not p.exists():
-        return None
-    img = Image.open(p).convert("RGBA")
-    ow, oh = img.size
-    scale = box / max(ow, oh)
-    dw, dh = max(1, round(ow * scale)), max(1, round(oh * scale))
-
-    arr = np.array(img.resize((dw, dh), Image.LANCZOS), dtype=np.float32) / 255.0
-    alpha = arr[:, :, 3:4]
-    arr[:, :, :3] *= alpha                       # premultiply for Cairo
-    out = (arr * 255).clip(0, 255).astype(np.uint8)
-    out[:, :, :3] = np.minimum(out[:, :, :3], out[:, :, 3:4])  # clamp RGB <= A
-    bgra = out[:, :, [2, 1, 0, 3]]
-    surf = cairo.ImageSurface.create_for_data(bytearray(bgra.tobytes()),
-                                              cairo.FORMAT_ARGB32, dw, dh)
-    return surf, dw, dh
-
-
-_icons = {}
-
-
-def _icon(path, box):
-    """Cached image rasterised at device resolution (*box* is in base units)."""
-    key = (str(path), box)
-    if key not in _icons:
-        _icons[key] = _load_surface(path, box * SCALE)
-    return _icons[key]
-
-
-def _paint_icon(ctx, loaded, x, cy, align="left"):
-    """Blit a device-resolution icon vertically centred on *cy*. With
-    align="left" *x* is the left edge; with "center" it is the centre.
-    Returns the width consumed in base units."""
-    surf, dw, dh = loaded
-    w = dw / SCALE
-    if align == "center":
-        x -= w / 2
-    ctx.save()
-    ctx.scale(1 / SCALE, 1 / SCALE)
-    ctx.set_source_surface(surf, round(x * SCALE), round(cy * SCALE - dh / 2))
-    ctx.paint()
-    ctx.restore()
-    return w
-
-
-def _format_time(ms):
-    total = ms / 1000
-    m, s = divmod(total, 60)
-    h, m = divmod(int(m), 60)
-    if h:
-        return f"{h}:{m:02d}:{s:06.3f}"
-    if m:
-        return f"{m}:{s:06.3f}"
-    return f"{s:.3f}"
-
-
-def _format_date(ts):
-    return datetime.fromisoformat(ts.replace('Z', '+00:00')).strftime('%Y-%m-%d')
 
 
 # ── Cell drawing ────────────────────────────────────────────────────────────────
@@ -320,9 +166,7 @@ def _draw_cell(ctx, kind, value, x, w, cy, base_y):
                           (f" ({accuracy:.2f}%)", STAT_DEC, False, SUB_DY, LABEL)],
                     cx, base_y, STAT)
     elif kind == 'value':
-        intp, decp = _split_decimal(value)
-        _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
-                    cx, base_y, STAT)
+        _draw_value(ctx, value, cx, base_y, STAT)
     elif kind == 'tr':
         intp, decp = _split_decimal(value, group=True)
         _draw_parts(ctx, [(intp, STAT_SIZE, True, 0), (decp, STAT_DEC, True, SUB_DY)],
@@ -398,11 +242,9 @@ def render(rows, output_path="leaderboard.png", board='league', country=None):
     for i, r in enumerate(rows):
         y = rows_top + i * (ROW_H + ROW_GAP)
         cy = y + ROW_H / 2
-        base_y = cy + STAT_SIZE * 0.34
+        base_y = _baseline(cy)
 
-        _set_rgb(ctx, PANEL)
-        _rounded_rect(ctx, PANEL_L, y, panel_r - PANEL_L, ROW_H, PANEL_RAD)
-        ctx.fill()
+        _draw_panel(ctx, y, PANEL_L, panel_r)
 
         x = PANEL_L
         for key, _text, w, kind in cols:

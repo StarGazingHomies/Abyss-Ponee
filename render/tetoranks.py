@@ -1,16 +1,9 @@
-import math
-import pathlib
-
 import cairo
-import numpy as np
-from PIL import Image
 
-BG           = (0.059, 0.086, 0.051)
-PANEL        = (0.086, 0.129, 0.075)
-USERNAME     = (0.976, 0.980, 0.961)
-STAT         = (0.612, 0.792, 0.584)
-LABEL        = (0.361, 0.518, 0.337)
-TR_INT       = (0.886, 0.988, 0.871)
+from .common import (BG, LABEL, PANEL_L, RANKS_DIR, ROW_GAP, ROW_H, SCALE, STAT, STAT_DEC,
+                     STAT_SIZE, SUB_DY, TOP, BOTTOM, TR_INT, USERNAME, _baseline, _draw_panel,
+                     _draw_parts, _draw_text, _draw_value, _icon, _paint_icon, _set_rgb,
+                     _split_decimal, options)
 
 # TETR.IO rank tier colours (fallback letter colour when the badge is missing).
 RANK_COLOURS = {
@@ -34,20 +27,9 @@ RANK_COLOURS = {
     'D':    (1.00 , 0.55 , 0.25 ),
 }
 
-ASSETS_DIR = pathlib.Path(__file__).parent.parent / "assets"
-RANKS_DIR = ASSETS_DIR / "ranks"
-
-# ── Layout (base units == reference pixels; multiplied by SCALE) ─────────────
-SCALE = 2
+# ── Layout specific to this board (see render.common for the shared metrics) ──
 W_VERBOSE = 1495
 W_COMPACT = 704
-ROW_H = 35
-ROW_GAP = 4
-TOP = 9
-BOTTOM = 6
-
-PANEL_L = 4
-PANEL_RAD = 4
 
 HEADER_H = 24
 HEADER_GAP = 4
@@ -83,136 +65,12 @@ HEADERS = (
 
 RANK_SIZE = 17
 HEADER_SIZE = 15
-STAT_SIZE = 17
-STAT_DEC = 11
-SUB_DY = 0                    # decimal part shares the integer baseline
-
-FONT_FACE = "HUN"
-
-options = cairo.FontOptions()
-options.set_antialias(cairo.ANTIALIAS_GRAY)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _set_rgb(ctx, col, alpha=1.0):
-    ctx.set_source_rgba(*col, alpha)
-
-
-def _rounded_rect(ctx, x, y, w, h, r):
-    ctx.new_sub_path()
-    ctx.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
-    ctx.arc(x + w - r, y + r, r, 1.5 * math.pi, 2 * math.pi)
-    ctx.arc(x + w - r, y + h - r, r, 0, 0.5 * math.pi)
-    ctx.arc(x + r, y + h - r, r, 0.5 * math.pi, math.pi)
-    ctx.close_path()
-
-
-def _font(ctx, size, bold=False, face=FONT_FACE):
-    ctx.select_font_face(face,
-                         cairo.FONT_SLANT_NORMAL,
-                         cairo.FONT_WEIGHT_BOLD if bold else cairo.FONT_WEIGHT_NORMAL)
-    ctx.set_font_size(size)
-
-
-def _draw_text(ctx, text, x, y, size, bold=False, colour=USERNAME, align="left"):
-    _font(ctx, size, bold)
-    ext = ctx.text_extents(text)
-    if align == "right":
-        x -= ext.x_advance
-    elif align == "center":
-        x -= ext.x_advance / 2
-    _set_rgb(ctx, colour)
-    ctx.move_to(x, y)
-    ctx.show_text(text)
-    return ext.x_advance
-
-
-def _draw_parts(ctx, parts, x, y, colour, align="center"):
-    """Draw a sequence of (text, size, bold, dy[, colour]) chunks laid out
-    left-to-right on a shared baseline, matching tetra_recent.py."""
-    total = 0.0
-    for part in parts:
-        _font(ctx, part[1], part[2])
-        total += ctx.text_extents(part[0]).x_advance
-    if align == "right":
-        cx = x - total
-    elif align == "center":
-        cx = x - total / 2
-    else:
-        cx = x
-    for part in parts:
-        text, size, bold, dy = part[0], part[1], part[2], part[3]
-        _font(ctx, size, bold)
-        _set_rgb(ctx, part[4] if len(part) > 4 else colour)
-        ctx.move_to(cx, y + dy)
-        ctx.show_text(text)
-        cx += ctx.text_extents(text).x_advance
-
-
-def _split_decimal(value, group=False):
-    """'98.03' -> ('98', '.03'); *group* adds thousands separators."""
-    s = f"{value:,.2f}" if group else f"{value:.2f}"
-    dot = s.find('.')
-    return s[:dot], s[dot:]
-
+# ── Helpers ─────────────────────────────────────────────────────────────
 
 def _rank_colour(rank):
     return RANK_COLOURS.get(rank, USERNAME)
-
-
-def _load_surface(path, box):
-    """Load a PNG and fit it into a *box* x *box* square, returning
-    (cairo surface, draw_w, draw_h). Returns None if the file is missing."""
-    p = pathlib.Path(path)
-    if not p.exists():
-        return None
-    img = Image.open(p).convert("RGBA")
-    ow, oh = img.size
-    scale = box / max(ow, oh)
-    dw, dh = max(1, round(ow * scale)), max(1, round(oh * scale))
-
-    arr = np.array(img.resize((dw, dh), Image.LANCZOS), dtype=np.float32) / 255.0
-    alpha = arr[:, :, 3:4]
-    arr[:, :, :3] *= alpha                       # premultiply for Cairo
-    out = (arr * 255).clip(0, 255).astype(np.uint8)
-    out[:, :, :3] = np.minimum(out[:, :, :3], out[:, :, 3:4])  # clamp RGB <= A
-    bgra = out[:, :, [2, 1, 0, 3]]
-    surf = cairo.ImageSurface.create_for_data(bytearray(bgra.tobytes()),
-                                              cairo.FORMAT_ARGB32, dw, dh)
-    return surf, dw, dh
-
-
-_badges = {}
-
-
-def _rank_badge(rank):
-    """Cached rank badge, rasterised at device resolution."""
-    key = rank.lower()
-    if key not in _badges:
-        _badges[key] = _load_surface(RANKS_DIR / f"{key}.png", BADGE_BOX * SCALE)
-    return _badges[key]
-
-
-def _paint_badge(ctx, loaded, cx, cy):
-    """Blit a badge centred on (cx, cy), bypassing the context scale so the
-    image is drawn at its native device resolution."""
-    surf, dw, dh = loaded
-    ctx.save()
-    ctx.scale(1 / SCALE, 1 / SCALE)
-    ctx.set_source_surface(surf, round(cx * SCALE - dw / 2), round(cy * SCALE - dh / 2))
-    ctx.paint()
-    ctx.restore()
-
-
-def _draw_value(ctx, value, cx, base_y, colour=STAT):
-    """Draw a float as integer + small decimal, or '-' if missing."""
-    if value is None:
-        _draw_text(ctx, "-", cx, base_y, size=STAT_SIZE, colour=colour, align="center")
-        return
-    intp, decp = _split_decimal(value)
-    _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
-                cx, base_y, colour, align="center")
 
 
 def _draw_tr(ctx, tr, x, base_y, align="left"):
@@ -338,15 +196,13 @@ def render(ranks, output_path="tetoranks.png", total=None, verbose=False):
     for i, r in enumerate(ranks):
         y = rows_top + i * (ROW_H + ROW_GAP)
         cy = y + ROW_H / 2
-        base_y = cy + STAT_SIZE * 0.34
+        base_y = _baseline(cy)
 
-        _set_rgb(ctx, PANEL)
-        _rounded_rect(ctx, PANEL_L, y, panel_r - PANEL_L, ROW_H, PANEL_RAD)
-        ctx.fill()
+        _draw_panel(ctx, y, PANEL_L, panel_r)
 
-        badge = _rank_badge(r['rank'])
+        badge = _icon(RANKS_DIR / f"{r['rank'].lower()}.png", BADGE_BOX)
         if badge is not None:
-            _paint_badge(ctx, badge, BADGE_CX, cy)
+            _paint_icon(ctx, badge, BADGE_CX, cy, align="center")
         else:
             _draw_text(ctx, r['rank'], BADGE_CX, base_y, size=RANK_SIZE, bold=True,
                        colour=_rank_colour(r['rank']), align="center")
@@ -357,9 +213,9 @@ def render(ranks, output_path="tetoranks.png", total=None, verbose=False):
         _draw_text(ctx, f"{count:,}" if count is not None else "-",
                    col['count'], base_y, size=STAT_SIZE, colour=STAT, align="center")
 
-        _draw_value(ctx, r['apm'], col['apm'], base_y)
-        _draw_value(ctx, r['pps'], col['pps'], base_y)
-        _draw_value(ctx, r['vs'], col['vs'], base_y)
+        _draw_value(ctx, r['apm'], col['apm'], base_y, STAT)
+        _draw_value(ctx, r['pps'], col['pps'], base_y, STAT)
+        _draw_value(ctx, r['vs'], col['vs'], base_y, STAT)
 
         if not verbose:
             continue

@@ -3,14 +3,15 @@
         "version": "v0.0.9",
         "date": "2026-09-07",
         "changes": [
-            "Added /tetolb"
+            "Added /tetolb (via request).",
+            "Added /tetoachievements (via request)."
         ]
     },
     {
         "version": "v0.0.8",
         "date": "2026-08-31",
         "changes": [
-            "Rank change now displays in /tetra_recent"
+            "Rank change now displays in /tetra_recent."
         ]
     },
     {
@@ -35,7 +36,7 @@
         "version": "v0.0.5",
         "date": "2026-06-27",
         "changes": [
-            "Added /tetra_recent",
+            "Added /tetra_recent.",
             "Added pony imageboards for personal use."
         ]
     },
@@ -43,7 +44,7 @@
         "version": "v0.0.4",
         "date": "2026-06-12",
         "changes": [
-            "Added /qp"
+            "Added /qp."
         ]
     },
     {

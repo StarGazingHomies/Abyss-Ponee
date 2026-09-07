@@ -11,6 +11,7 @@ from teto_commands import handle_quickplay
 from teto_commands import handle_changelog
 from teto_commands import handle_tetoranks
 from teto_commands import handle_tetolb
+from teto_commands import handle_teto_achievements, achievement_autocomplete
 from pony_commands import manebooruClient
 from pony_commands import handle_image
 from feature_requests import append_request, read_requests
@@ -54,9 +55,9 @@ if not token or not bot_owner or not headers:
     description="Show this help message",
 )
 @app_commands.describe(
-    command="Optional specific command to get help for (tetra, qp, leagueflow, image)"
+    command="Optional specific command to get help for (tetra, qp, tetolb, tetoachievements, ...)"
 )
-async def help_command(interaction: discord.Interaction,     command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog', 'tetoranks', 'tetolb', 'request_feature']] = None):
+async def help_command(interaction: discord.Interaction,     command: Optional[Literal['tetra', 'tetra_recent', 'qp', 'leagueflow', 'image', 'changelog', 'tetoranks', 'tetolb', 'tetoachievements', 'request_feature']] = None):
     if command is None:
         description = "<:thinklight:905641655741329418>\n"
         description += "Miscellaneous teto bot by Pony (on Tetr.io)"
@@ -77,6 +78,8 @@ async def help_command(interaction: discord.Interaction,     command: Optional[L
         await interaction.response.send_message("/tetoranks [verbose]\nShow TETRA LEAGUE rank TR thresholds, player counts, and average stats.\nVerbose also shows position, target TR and how deflated/inflated each rank is.")
     elif command == 'tetolb':
         await interaction.response.send_message("/tetolb [board] [country] [page_size] [start_rank]\nBrowse a TETR.IO leaderboard.\nBoard is one of league (default), xp, ar, 40l, blitz, zenith, zenithex.\nCountry filters to a two-letter ISO code (e.g. US); omit for global.\nPage_size sets rows per page (1-25, default 10). Start_rank opens on the page containing that rank (max 1000).")
+    elif command == 'tetoachievements':
+        await interaction.response.send_message("/tetoachievements <achievement> [page_size] [start_rank]\nBrowse a TETR.IO achievement leaderboard, with its medal cutoffs and AR payouts.\nStart typing to search the 66 achievements by name or category, or give an ID from 1-67.\nPage_size sets rows per page (1-25, default 10). Start_rank opens on the page containing that rank (max 1000).")
     elif command == 'request_feature':
         await interaction.response.send_message("/request_feature [request]\nSuggest a feature for the bot (once per day).\nIf run by the bot owner with no request, shows all pending requests.")
 
@@ -199,6 +202,34 @@ async def tetolb_command(interaction: discord.Interaction,
     except Exception as e:
         await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
         logger.error(f'Error in /tetolb command: {e}', exc_info=True)
+
+
+@tree.command(
+    name="tetoachievements",
+    description="Browse a TETR.IO achievement leaderboard",
+)
+@app_commands.describe(
+    achievement="Which achievement (start typing to search, or give an ID from 1-67)",
+    page_size="Rows per page (1-25, default 10)",
+    start_rank="Open on the page containing this rank (max 1000)",
+)
+@app_commands.autocomplete(achievement=achievement_autocomplete)
+async def teto_achievements_command(interaction: discord.Interaction, achievement: str,
+                                    page_size: Optional[int] = None,
+                                    start_rank: Optional[int] = None):
+    log_command(interaction, 'tetoachievements', achievement=achievement, page_size=page_size, start_rank=start_rank)
+    await interaction.response.defer()
+    try:
+        await handle_teto_achievements(
+            send_reply=lambda *args, **kwargs: interaction.followup.send(*args, **kwargs),
+            send_message=lambda msg: interaction.followup.send(msg),
+            achievement=achievement,
+            page_size=page_size,
+            start_rank=start_rank,
+        )
+    except Exception as e:
+        await interaction.followup.send(f'Internal Error (details omitted). Please ping bot owner if this keeps happening.')
+        logger.error(f'Error in /tetoachievements command: {e}', exc_info=True)
 
 
 @tree.command(

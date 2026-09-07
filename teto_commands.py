@@ -9,6 +9,7 @@ import dateparser
 from typing import Optional
 
 import discord
+from discord import app_commands
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ from render import leagueflow as leagueflow_render
 from render import quickplay as quickplay_render
 from render import tetoranks as tetoranks_render
 from render import leaderboard as leaderboard_render
+from render import achievements as achievements_render
 
 tetrioClient = tetrio.TetraLeagueAPI()
 
@@ -809,6 +811,224 @@ async def handle_tetolb(send_reply, send_message, board: str = 'league', country
         return
 
     paginator = LeaderboardPaginator(rows, board, country, page_size, cursor, has_more)
+    paginator.page = min((start_rank - 1) // page_size, paginator.num_pages - 1)
+    paginator._sync_buttons()
+    if paginator.num_pages > 1 or paginator.has_more:
+        paginator.message = await send_reply(file=paginator.render_page(), view=paginator)
+    else:
+        await send_reply(file=paginator.render_page())   # single page: no buttons
+
+
+# ── /teto_achievements ─────────────────────────────────────────────────────────
+
+ACHIEVEMENTS_PATH = pathlib.Path(__file__).parent / 'achievements.json'
+ACH_PAGE_SIZE_DEFAULT = 10
+ACH_PAGE_SIZE_MAX = 25
+ACH_START_RANK_MAX = 1000      # seeding deeper than this means too many sequential API calls
+ACH_FETCH_SIZE = 100
+
+_achievements_cache = None
+
+
+def _load_achievements() -> list:
+    """The bundled achievement table, used only to power autocomplete and to
+    resolve a typed name to an ID. Rendering always uses the live API response,
+    so a stale file can never produce a wrong board -- at worst a new achievement
+    is missing from the suggestions and has to be given by ID."""
+    global _achievements_cache
+    if _achievements_cache is None:
+        try:
+            with open(ACHIEVEMENTS_PATH, encoding='utf-8') as f:
+                _achievements_cache = json.load(f)
+        except (OSError, ValueError):
+            logger.warning(f'Could not read {ACHIEVEMENTS_PATH.name}; autocomplete disabled')
+            _achievements_cache = []
+    return _achievements_cache
+
+
+def _resolve_achievement(text: str) -> Optional[int]:
+    """An autocomplete value, a raw ID or an achievement name -> achievement ID."""
+    text = (text or '').strip()
+    if not text:
+        return None
+    if text.lstrip('#').isdigit():
+        return int(text.lstrip('#'))
+    lowered = text.lower()
+    achievements = _load_achievements()
+    for a in achievements:
+        if a['name'].lower() == lowered:
+            return a['k']
+    for a in achievements:
+        if lowered in a['name'].lower():
+            return a['k']
+    return None
+
+
+async def achievement_autocomplete(interaction: discord.Interaction, current: str):
+    """Discord caps choices at 25 and there are 66 achievements, so the picker
+    has to filter rather than list."""
+    query = (current or '').strip().lower()
+    matches = [a for a in _load_achievements()
+               if not query
+               or query in a['name'].lower()
+               or query in (a.get('category') or '').lower()
+               or query in (a.get('object') or '').lower()
+               or query == str(a['k'])]
+    return [app_commands.Choice(name=f"#{a['k']} - {a['name']} ({a['category']})"[:100],
+                                value=str(a['k']))
+            for a in matches[:25]]
+
+
+def _build_ach_row(entry: dict, pos: int) -> dict:
+    """Flatten one achievement entry into the fields the renderer needs."""
+    user = entry.get('u') or {}
+    ally = (entry.get('x') or {}).get('ally')
+    return {
+        'pos': pos,
+        'username': user.get('username'),
+        'country': user.get('country'),
+        'supporter': user.get('supporter', False),
+        'ally': {'username': ally.get('username'), 'country': ally.get('country'),
+                 'supporter': ally.get('supporter', False)} if ally else None,
+        'v': entry.get('v'),
+        'a': entry.get('a'),
+        'ts': entry.get('t'),
+    }
+
+
+def _untiebreak(pri: float) -> float:
+    """TETR.IO nudges each prisecter by a tiny unique amount to keep the sort
+    stable; strip it so genuinely equal scores compare equal."""
+    return round(pri * 1e4) / 1e4
+
+
+def _ach_rows(entries: list, ach: dict, state: Optional[dict] = None):
+    """Number *entries* into rows, returning (rows, state).
+
+    Mirrors the doublecount handling in ch.tetr.io/res/js/leaderboard-base.js:
+    entries with the same score share a position and the next distinct score
+    skips past all of them. Pair achievements (Duo) return both halves of every
+    pair, so an entry is dropped once either of its two players has been seen.
+    *state* carries the counters between pages -- pass back the value returned by
+    the previous call."""
+    if state is None:
+        state = {'position': 0, 'pending': 0, 'last_pri': None, 'seen': set()}
+    pair = bool(ach.get('pair'))
+    rows = []
+
+    for entry in entries:
+        pri = (entry.get('p') or {}).get('pri')
+        if pair:
+            user_id = (entry.get('u') or {}).get('_id')
+            ally_id = ((entry.get('x') or {}).get('ally') or {}).get('_id')
+            if user_id in state['seen'] or (ally_id and ally_id in state['seen']):
+                state['last_pri'] = pri
+                continue
+            state['seen'].add(user_id)
+            if ally_id:
+                state['seen'].add(ally_id)
+
+        tied = (state['last_pri'] is not None and pri is not None
+                and abs(_untiebreak(state['last_pri']) - _untiebreak(pri)) <= 0.001)
+        if tied:
+            state['pending'] += 1
+        else:
+            state['position'] += state['pending'] + 1
+            state['pending'] = 0
+        state['last_pri'] = pri
+        rows.append(_build_ach_row(entry, state['position']))
+
+    return rows, state
+
+
+def _ach_top_values(entries: list) -> dict:
+    """The value held at each competitive placement, for the header's TOP N cards.
+    Read from the untouched first page, exactly as achievement.js does."""
+    return {key: entries[pos - 1]['v']
+            for key, pos, _ar in achievements_render.COMPETITIVE_AR if len(entries) >= pos}
+
+
+class AchievementPaginator(ImagePaginator):
+    filename = "teto_achievements.png"
+
+    def __init__(self, rows, k, achievement, cutoffs, top_values, page_size, cursor,
+                 has_more, state):
+        self.k = k
+        self.achievement = achievement
+        self.cutoffs = cutoffs
+        self.top_values = top_values
+        self.cursor = cursor
+        self.state = state            # position/tie/seen counters, continued by _fetch_more
+        super().__init__(rows, page_size, has_more)
+
+    def _render_rows(self, rows) -> bytes:
+        buf = io.BytesIO()
+        achievements_render.render(rows, buf, achievement=self.achievement,
+                                   cutoffs=self.cutoffs, top_values=self.top_values)
+        return buf.getvalue()
+
+    async def _fetch_more(self) -> list:
+        result = await tetrioClient.achievement_entries(self.k, after=self.cursor,
+                                                        limit=ACH_FETCH_SIZE)
+        entries = (result.get('data') or {}).get('entries') if result.get('success') else None
+        if not entries:
+            self.has_more = False
+            return []
+        self.cursor = _prisecter(entries[-1])
+        self.has_more = len(entries) == ACH_FETCH_SIZE
+        rows, self.state = _ach_rows(entries, self.achievement, self.state)
+        return rows
+
+
+async def handle_teto_achievements(send_reply, send_message, achievement: str,
+                                   page_size: Optional[int] = None,
+                                   start_rank: Optional[int] = None):
+    """Core logic for the teto_achievements command. send_reply and send_message
+    are callables."""
+    k = _resolve_achievement(achievement)
+    if k is None:
+        await send_message(f'Unknown achievement "{achievement}". Pick one from the '
+                           f'autocomplete list, or give an ID between 1 and 67.')
+        return
+
+    page_size = max(1, min(page_size or ACH_PAGE_SIZE_DEFAULT, ACH_PAGE_SIZE_MAX))
+    start_rank = max(1, min(start_rank or 1, ACH_START_RANK_MAX))
+
+    # Page one also carries the achievement info and cutoffs the header needs.
+    result = await tetrioClient.achievement(k)
+    if not result.get('success'):
+        await send_reply(f"{result.get('error', {}).get('msg', 'Unknown error')}")
+        return
+    data = result['data']
+    ach, cutoffs = data['achievement'], data.get('cutoffs') or {}
+    entries = data.get('leaderboard') or []
+    top_values = _ach_top_values(entries)
+
+    rows, state = _ach_rows(entries, ach)
+    cursor = _prisecter(entries[-1]) if entries else None
+    has_more = len(entries) == ACH_FETCH_SIZE
+
+    # Seed enough pages to reach start_rank (there is no rank -> cursor lookup).
+    while has_more and len(rows) < start_rank:
+        page = await tetrioClient.achievement_entries(k, after=cursor, limit=ACH_FETCH_SIZE)
+        if not page.get('success'):
+            await send_reply(f"{page.get('error', {}).get('msg', 'Unknown error')}")
+            return
+        page_entries = page['data']['entries']
+        if not page_entries:
+            has_more = False
+            break
+        new_rows, state = _ach_rows(page_entries, ach, state)
+        rows.extend(new_rows)
+        cursor = _prisecter(page_entries[-1])
+        has_more = len(page_entries) == ACH_FETCH_SIZE
+
+    if not rows:
+        await send_message(f"No one has earned {ach.get('name', k)} yet.")
+        return
+
+    paginator = AchievementPaginator(rows, k, ach, cutoffs, top_values, page_size, cursor,
+                                     has_more, state)
     paginator.page = min((start_rank - 1) // page_size, paginator.num_pages - 1)
     paginator._sync_buttons()
     if paginator.num_pages > 1 or paginator.has_more:

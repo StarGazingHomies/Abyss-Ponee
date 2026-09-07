@@ -97,6 +97,23 @@ class TetraLeagueAPI(CachedAPIClient):
             return await self.request_paginate(path, {"limit": str(single_max)}, page_using='after', page_times=(limit + single_max - 1) // single_max, force_update=force_update)
         return [await self.request(path, params={"limit": str(limit)}, force_update=force_update)]
 
+    async def achievement(self, k: int, force_update: bool = False) -> dict:
+        """An achievement's info, medal cutoffs and first 100 leaderboard entries."""
+        path = ('achievements', str(k))
+        return await self.request(path, force_update=force_update)
+
+    async def achievement_entries(self, k: int, after: str = None, limit: int = 100,
+                                  force_update: bool = False) -> dict:
+        """One page (<= 100 entries) of an achievement's leaderboard.
+
+        *after* is a prisecter cursor. There is no country-scoped variant of this
+        board -- achievements are global only."""
+        path = ('achievements', str(k), 'entries')
+        params = {"limit": str(max(1, min(limit, 100)))}
+        if after is not None:
+            params['after'] = after
+        return await self.request(path, params, force_update=force_update)
+
     async def leaderboard_page(self, board: str, country: str = None, after: str = None,
                                limit: int = 100, force_update: bool = False) -> dict:
         """One page (<= 100 entries) of a global or per-country leaderboard.

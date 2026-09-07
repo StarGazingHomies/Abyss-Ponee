@@ -1,11 +1,12 @@
-import pathlib
 import math
 import re
 from datetime import datetime, timezone, timedelta
 
 import cairo
-import numpy as np
-from PIL import Image
+
+from .common import (ASSETS_DIR, FLAGS_DIR, PANEL_L, RANKS_DIR, ROW_GAP, ROW_H, SCALE,
+                     SUB_DY, TOP, BOTTOM, USERNAME, _baseline, _draw_panel, _draw_parts,
+                     _draw_text, _draw_value, _font, _icon, _paint_icon, _set_rgb, options)
 
 try:
     from zoneinfo import ZoneInfo
@@ -40,8 +41,9 @@ def parse_timezone(tz_str):
     return None
 
 # ── Colours (sampled from reference image) ─────────────────────────────────────
+# BG, STAT and TR_INT run a shade cooler here than on the other boards, so
+# they shadow the render.common values; PANEL and USERNAME match.
 BG            = (0.051, 0.078, 0.047)   # outer background / gaps between rows (13,20,12)
-PANEL         = (0.086, 0.129, 0.075)   # per-row panel (22,33,19)
 BADGE_ORANGE  = (1.000, 0.655, 0.259)   # (255,167,66)  win
 BADGE_BLUE    = (0.545, 0.545, 1.000)   # (139,139,255) loss
 BADGE_NC      = (0.118, 0.176, 0.102)   # no-contest faint pennant (30,45,26)
@@ -53,24 +55,15 @@ NC_TEXT       = (0.521, 0.741, 0.482)   # "NO CONTEST" green (133,189,123)
 NULL_TEXT     = (0.300, 0.220, 0.106)   # dark "NULLIFIED"
 DQ_WIN_TEXT   = (0.961, 0.553, 0.149)   # orange "VICTORY by DQ"
 DQ_LOSS_TEXT  = (0.949, 0.110, 0.400)   # pink "DEFEAT by DQ"
-USERNAME      = (0.976, 0.980, 0.961)   # (249,250,245)
 VS_TEXT       = (0.486, 0.608, 0.443)   # (124,155,113)
 STAT          = (0.518, 0.698, 0.486)   # (132,178,124)
 DATE          = (0.612, 0.816, 0.576)   # (156,208,147)
 TR_INT        = (0.973, 0.992, 0.957)   # bright integer part of the TR delta (248,253,244)
 TR_FADE       = (0.624, 0.816, 0.580)   # muted decimal + "TR" suffix (160,208,148)
 
-# ── Layout (base units == reference pixels; multiplied by SCALE) ───────────────
-SCALE       = 2
+# ── Layout specific to this board (see render.common for the shared metrics) ──
 W           = 1134            # trailing margin holds the rank-change icon slot (VIEW button removed)
-ROW_H       = 35
-ROW_GAP     = 4
-TOP         = 9
-BOTTOM      = 6
-
-PANEL_L     = 4
 PANEL_R     = 1130
-PANEL_RAD   = 4
 
 BADGE_L       = 5
 BADGE_BODY_R  = 156
@@ -90,10 +83,6 @@ STAR_BOX    = 21
 APM_CX      = 527
 PPS_CX      = 617
 VS_CX       = 702
-STAT_SIZE   = 17
-STAT_DEC    = 11
-SUB_DY      = 0               # decimal part is smaller but shares the integer baseline
-
 DATE_CX     = 853
 DATE_SIZE   = 15
 
@@ -105,75 +94,8 @@ TR_SUFFIX   = 14
 RANK_GAP    = 7               # gap between the TR value and the rank-change icon
 RANK_BOX    = 22              # square box the rank icon is fit into
 
-FONT_FACE = "HUN"
-
-ASSETS_DIR = pathlib.Path(__file__).parent.parent / "assets"
-
-options = cairo.FontOptions()
-options.set_antialias(cairo.ANTIALIAS_GRAY)
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _set_rgb(ctx, col, alpha=1.0):
-    ctx.set_source_rgba(*col, alpha)
-
-
-def _rounded_rect(ctx, x, y, w, h, r):
-    ctx.new_sub_path()
-    ctx.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
-    ctx.arc(x + w - r, y + r, r, 1.5 * math.pi, 2 * math.pi)
-    ctx.arc(x + w - r, y + h - r, r, 0, 0.5 * math.pi)
-    ctx.arc(x + r, y + h - r, r, 0.5 * math.pi, math.pi)
-    ctx.close_path()
-
-
-def _font(ctx, size, bold=False, face=FONT_FACE, italic=False):
-    ctx.select_font_face(face,
-                         cairo.FONT_SLANT_ITALIC if italic else cairo.FONT_SLANT_NORMAL,
-                         cairo.FONT_WEIGHT_BOLD if bold else cairo.FONT_WEIGHT_NORMAL)
-    ctx.set_font_size(size)
-
-
-def _draw_text(ctx, text, x, y, size, bold=False, colour=USERNAME, align="left", face=FONT_FACE, italic=False):
-    _font(ctx, size, bold, face, italic)
-    ext = ctx.text_extents(text)
-    if align == "right":
-        x -= ext.x_advance
-    elif align == "center":
-        x -= ext.x_advance / 2
-    _set_rgb(ctx, colour)
-    ctx.move_to(x, y)
-    ctx.show_text(text)
-    return ext.x_advance
-
-
-def _draw_parts(ctx, parts, x, y, colour, align="center"):
-    """Draw a sequence of (text, size, bold, dy[, colour]) chunks laid out
-    left-to-right.
-
-    *x* is interpreted according to *align* ('left', 'right', 'center') and the
-    chunks share a common baseline *y*, each offset vertically by its own dy
-    (used for subscript decimals). A chunk may carry its own colour as an
-    optional 5th element, otherwise the shared *colour* is used."""
-    total = 0.0
-    for part in parts:
-        _font(ctx, part[1], part[2])
-        total += ctx.text_extents(part[0]).x_advance
-    if align == "right":
-        cx = x - total
-    elif align == "center":
-        cx = x - total / 2
-    else:
-        cx = x
-    for part in parts:
-        text, size, bold, dy = part[0], part[1], part[2], part[3]
-        _font(ctx, size, bold)
-        _set_rgb(ctx, part[4] if len(part) > 4 else colour)
-        ctx.move_to(cx, y + dy)
-        ctx.show_text(text)
-        cx += ctx.text_extents(text).x_advance
-
 
 def _draw_score(ctx, label, a, b, right_x, base_y, size, colour):
     """Draw 'LABEL a—b' right-aligned at right_x. The em-dash is drawn as a
@@ -200,46 +122,6 @@ def _draw_score(ctx, label, a, b, right_x, base_y, size, colour):
 
     ctx.move_to(x + lw + margin + dash_w + margin, base_y)
     ctx.show_text(right)
-
-
-def _split_decimal(value):
-    """'98.03' -> ('98', '.03')."""
-    s = f"{value:.2f}"
-    dot = s.find('.')
-    return s[:dot], s[dot:]
-
-
-def _load_surface(path, box):
-    """Load a PNG and fit it into a *box* x *box* square, returning
-    (cairo surface, draw_w, draw_h). Returns None if the file is missing."""
-    p = pathlib.Path(path)
-    if not p.exists():
-        return None
-    img = Image.open(p).convert("RGBA")
-    ow, oh = img.size
-    scale = box / max(ow, oh)
-    dw, dh = max(1, round(ow * scale)), max(1, round(oh * scale))
-
-    arr = np.array(img.resize((dw, dh), Image.LANCZOS), dtype=np.float32) / 255.0
-    alpha = arr[:, :, 3:4]
-    arr[:, :, :3] *= alpha                       # premultiply for Cairo
-    out = (arr * 255).clip(0, 255).astype(np.uint8)
-    out[:, :, :3] = np.minimum(out[:, :, :3], out[:, :, 3:4])  # clamp RGB <= A
-    bgra = out[:, :, [2, 1, 0, 3]]
-    surf = cairo.ImageSurface.create_for_data(bytearray(bgra.tobytes()),
-                                              cairo.FORMAT_ARGB32, dw, dh)
-    return surf, dw, dh
-
-
-def _paint_surface(ctx, loaded, x, cy):
-    """Blit a (surface, w, h) tuple left-aligned at x, vertically centred on cy.
-    Returns the x advance (drawn width)."""
-    surf, dw, dh = loaded
-    ctx.save()
-    ctx.set_source_surface(surf, x, cy - dh / 2)
-    ctx.paint()
-    ctx.restore()
-    return dw
 
 
 def _format_date(ts, tz=timezone.utc):
@@ -317,12 +199,9 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
     for i, g in enumerate(games):
         y = TOP + i * (ROW_H + ROW_GAP)
         cy = y + ROW_H / 2
-        base_y = cy + STAT_SIZE * 0.34       # shared text baseline
+        base_y = _baseline(cy)               # shared text baseline
 
-        # Per-row panel
-        _set_rgb(ctx, PANEL)
-        _rounded_rect(ctx, PANEL_L, y, PANEL_R - PANEL_L, ROW_H, PANEL_RAD)
-        ctx.fill()
+        _draw_panel(ctx, y, PANEL_L, PANEL_R)
 
         outcome = g['outcome']
 
@@ -367,22 +246,17 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
                          bold=True, colour=USERNAME)
         cx += NAME_GAP
         if g.get('country'):
-            flag = _load_surface(ASSETS_DIR / "flags" / f"{g['country'].upper()}.png", FLAG_BOX)
-            if flag:
-                cx += _paint_surface(ctx, flag, cx, cy) + FLAG_GAP
+            flag = _icon(FLAGS_DIR / f"{g['country'].upper()}.png", FLAG_BOX)
+            if flag is not None:
+                cx += _paint_icon(ctx, flag, cx, cy) + FLAG_GAP
         if g.get('supporter'):
-            star = _load_surface(ASSETS_DIR / "star.png", STAR_BOX)
-            if star:
-                _paint_surface(ctx, star, cx, cy)
+            star = _icon(ASSETS_DIR / "star.png", STAR_BOX)
+            if star is not None:
+                _paint_icon(ctx, star, cx, cy)
 
         # ── Stats (int large, decimal small/subscript) ──────────────────
         for value, col_cx in ((g['apm'], APM_CX), (g['pps'], PPS_CX), (g['vs'], VS_CX)):
-            if value is None:
-                _draw_text(ctx, "-", col_cx, base_y, size=STAT_SIZE, colour=STAT, align="center")
-                continue
-            intp, decp = _split_decimal(value)
-            _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
-                        col_cx, base_y, STAT, align="center")
+            _draw_value(ctx, value, col_cx, base_y, STAT)
 
         # ── Date ────────────────────────────────────────────────────────
         _draw_text(ctx, _format_date(g['ts'], tz), DATE_CX, base_y, size=DATE_SIZE,
@@ -393,27 +267,20 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
 
         # ── Rank change icon (new rank, shown right of the TR value) ────
         if g.get('new_rank'):
-            icon = _load_surface(ASSETS_DIR / "ranks" / f"{g['new_rank'].lower()}.png", RANK_BOX)
-            if icon:
-                _paint_surface(ctx, icon, TR_RIGHT + RANK_GAP, cy)
+            icon = _icon(RANKS_DIR / f"{g['new_rank'].lower()}.png", RANK_BOX)
+            if icon is not None:
+                _paint_icon(ctx, icon, TR_RIGHT + RANK_GAP, cy)
 
     if summary:
         stats = _compute_summary(games)
         y = TOP + n * (ROW_H + ROW_GAP)
         cy = y + ROW_H / 2
-        base_y = cy + STAT_SIZE * 0.34
-        _set_rgb(ctx, PANEL)
-        _rounded_rect(ctx, PANEL_L, y, PANEL_R - PANEL_L, ROW_H, PANEL_RAD)
-        ctx.fill()
+        base_y = _baseline(cy)
+        _draw_panel(ctx, y, PANEL_L, PANEL_R)
         _draw_text(ctx, "PAGE AVERAGE", RESULT_X, base_y, size=RESULT_SIZE,
                    bold=True, colour=NC_TEXT, align="right")
         for value, col_cx in ((stats['apm'], APM_CX), (stats['pps'], PPS_CX), (stats['vs'], VS_CX)):
-            if value is None:
-                _draw_text(ctx, "-", col_cx, base_y, size=STAT_SIZE, colour=STAT, align="center")
-            else:
-                intp, decp = _split_decimal(value)
-                _draw_parts(ctx, [(intp, STAT_SIZE, False, 0), (decp, STAT_DEC, False, SUB_DY)],
-                            col_cx, base_y, STAT, align="center")
+            _draw_value(ctx, value, col_cx, base_y, STAT)
         # _draw_text(ctx, "NET", DATE_CX, base_y, size=DATE_SIZE, colour=DATE, align="center")
         _draw_tr(ctx, stats['tr_total'], base_y)
 

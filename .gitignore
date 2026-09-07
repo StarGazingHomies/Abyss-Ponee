@@ -1,6 +1,10 @@
 .config
 config.json
 *.json
+# ...except the two generated tables the bot reads at runtime. Image assets stay
+# untracked; tools/fetch_achievements.py refetches them from TETR.IO.
+!changelog.json
+!achievements.json
 *.png
 *.jpg
 *.log
