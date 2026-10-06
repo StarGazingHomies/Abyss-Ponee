@@ -6,7 +6,8 @@ import cairo
 
 from .common import (ASSETS_DIR, FLAGS_DIR, PANEL_L, RANKS_DIR, ROW_GAP, ROW_H, SCALE,
                      SUB_DY, TOP, BOTTOM, USERNAME, _baseline, _draw_panel, _draw_parts,
-                     _draw_text, _draw_value, _font, _icon, _paint_icon, _set_rgb, options)
+                     _draw_text, _draw_value, _font, _icon, _paint_icon, _set_rgb,
+                     _split_decimal, options)
 
 try:
     from zoneinfo import ZoneInfo
@@ -140,23 +141,35 @@ def _compute_summary(games):
         return sum(vals) / len(vals) if vals else None
     return {
         'apm': avg('apm'), 'pps': avg('pps'), 'vs': avg('vs'),
-        'tr_total': sum(g['tr_change'] or 0 for g in games),
+        # A placement game's 'tr_change' holds an absolute TR, not a delta,
+        # so it contributes nothing to the net change for the page.
+        'tr_total': sum((g['tr_change'] or 0) for g in games if not g.get('placed')),
     }
 
 
-def _draw_tr(ctx, delta_tr, base_y):
-    change = delta_tr
-    if change is not None:
-        if round(change, 2) == 0:
-            head, dec = "±0", ".00"
-        else:
-            whole = f"{change:+.2f}"
-            dot = whole.find('.')
-            head, dec = whole[:dot], whole[dot:]
-        _draw_parts(ctx, [(head, TR_SIZE, True, 0, TR_INT),
+def _draw_tr(ctx, g, base_y):
+    change = g.get('tr_change') if isinstance(g, dict) else g
+    if change is None:
+        return
+    if isinstance(g, dict) and g.get('placed'):
+        # No prior TR to diff against: show the absolute TR the player was placed at.
+        head, dec = _split_decimal(change, group=True)
+        _draw_parts(ctx, [("Placed ", TR_SUFFIX, True, 0, TR_FADE),
+                          (head, TR_SIZE, True, 0, TR_INT),
                           (dec, TR_DEC, True, SUB_DY, TR_FADE),
                           (" TR", TR_SUFFIX, True, 0, TR_FADE)],
                     TR_RIGHT, base_y, TR_INT, align="right")
+        return
+    if round(change, 2) == 0:
+        head, dec = "±0", ".00"
+    else:
+        whole = f"{change:+.2f}"
+        dot = whole.find('.')
+        head, dec = whole[:dot], whole[dot:]
+    _draw_parts(ctx, [(head, TR_SIZE, True, 0, TR_INT),
+                      (dec, TR_DEC, True, SUB_DY, TR_FADE),
+                      (" TR", TR_SUFFIX, True, 0, TR_FADE)],
+                TR_RIGHT, base_y, TR_INT, align="right")
 
 
 # ── Main render ─────────────────────────────────────────────────────────────────
@@ -175,9 +188,13 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
         supporter bool
         apm, pps, vs   float     queried player's stats for the game
         ts        str            ISO timestamp
-        tr_change float | None   TR delta for the queried player
+        tr_change float | None   TR delta for the queried player, or (if
+                                 *placed* is True) the absolute TR they were
+                                 placed at
         new_rank  str | None     rank key ('x+', 's', ...) if the game changed
                                  the queried player's rank, else None
+        placed    bool          True if this was the queried player's
+                                 placement match (no prior TR to diff against)
 
     The result pennant is coloured by *outcome*: orange for a win, blue for a
     loss, dark green for a no contest.
@@ -263,7 +280,7 @@ def render(games, output_path="output_recent.png", tz=timezone.utc, summary=Fals
                    colour=DATE, align="center")
 
         # ── TR change ───────────────────────────────────────────────────
-        _draw_tr(ctx, g.get('tr_change'), base_y)
+        _draw_tr(ctx, g, base_y)
 
         # ── Rank change icon (new rank, shown right of the TR value) ────
         if g.get('new_rank'):
@@ -320,10 +337,20 @@ if __name__ == "__main__":
         league = entry['extras'].get('league', {}).get(me['id'])
         tr_change = None
         new_rank = None
-        if league and league[0].get('tr') is not None and league[1].get('tr') is not None:
-            tr_change = league[1]['tr'] - league[0]['tr']
-        if league and league[1].get('rank') and league[0].get('rank') != league[1].get('rank'):
-            new_rank = league[1]['rank']
+        placed = False
+        if league and len(league) >= 2:
+            before, after = league[0], league[1]
+            if after is None:
+                pass  # No post-match standing at all (e.g. nullified) - leave the TR column blank.
+            elif before is None:
+                placed = True
+                tr_change = after.get('tr')
+                new_rank = after.get('rank')
+            else:
+                if before.get('tr') is not None and after.get('tr') is not None:
+                    tr_change = after['tr'] - before['tr']
+                if after.get('rank') and before.get('rank') != after.get('rank'):
+                    new_rank = after['rank']
         st = me['stats']
         return {
             'outcome': outcome,
@@ -336,6 +363,7 @@ if __name__ == "__main__":
             'ts': entry['ts'],
             'tr_change': tr_change,
             'new_rank': new_rank,
+            'placed': placed,
         }
 
     games = [build(e) for e in data['data']['entries'][:args.count]]

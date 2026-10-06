@@ -139,12 +139,22 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
 
     tr_change = None
     new_rank = None
+    placed = False
     league = entry["extras"].get("league", {}).get(me["id"])
     if league and len(league) >= 2:
-        if league[0].get("tr") is not None and league[1].get("tr") is not None:
-            tr_change = league[1]["tr"] - league[0]["tr"]
-        if league[1].get("rank") and league[0].get("rank") != league[1].get("rank"):
-            new_rank = league[1]["rank"]
+        before, after = league[0], league[1]
+        if after is None:
+            pass  # Unranked
+        elif before is None:
+            # Placement
+            placed = True
+            tr_change = after.get("tr")
+            new_rank = after.get("rank")
+        else:
+            if before.get("tr") is not None and after.get("tr") is not None:
+                tr_change = after["tr"] - before["tr"]
+            if after.get("rank") and before.get("rank") != after.get("rank"):
+                new_rank = after["rank"]
 
     stats = me["stats"]
     return {
@@ -160,6 +170,7 @@ def _build_recent_game(entry: dict, username: str) -> Optional[dict]:
         "ts": entry["ts"],
         "tr_change": tr_change,
         "new_rank": new_rank,
+        "placed": placed,
     }
 
 
